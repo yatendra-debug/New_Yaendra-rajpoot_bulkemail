@@ -9,9 +9,11 @@ const crypto = require("crypto");
 const app = express();
 const PORT = 8080;
 
-/* ================= CONFIG ================= */
+/* ================= LOGIN ================= */
 
-const ADMIN_LOGIN = "@##2588^$$^O^%%^";
+const LOGIN_KEY = "^%%^&^&%$$#$$%#";
+
+/* ================= CONFIG ================= */
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
@@ -67,13 +69,13 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (record.count > 100) {
+  if (record.count > 120) {
     return res.status(429).send("Too many requests");
   }
 
   record.count++;
-
   next();
+
 });
 
 /* ================= HELPERS ================= */
@@ -112,15 +114,17 @@ function checkDailyLimit(sender, amount) {
   updated.count += amount;
 
   return true;
+
 }
 
 /* ================= AUTH ================= */
 
 function requireAuth(req, res, next) {
 
-  if (req.session.user === ADMIN_LOGIN) return next();
+  if (req.session.user === LOGIN_KEY) return next();
 
   res.redirect("/");
+
 }
 
 app.get("/", (req, res) => {
@@ -131,14 +135,16 @@ app.post("/login", (req, res) => {
 
   const { username, password } = req.body || {};
 
-  if (username === ADMIN_LOGIN && password === ADMIN_LOGIN) {
+  if (username === LOGIN_KEY && password === LOGIN_KEY) {
 
-    req.session.user = ADMIN_LOGIN;
+    req.session.user = LOGIN_KEY;
 
     return res.json({ success: true });
+
   }
 
   res.json({ success: false });
+
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -168,17 +174,11 @@ app.post("/send", requireAuth, async (req, res) => {
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
-    if (!email || !password || !recipients) {
-
+    if (!email || !password || !recipients)
       return res.json({ success: false, message: "Missing fields" });
 
-    }
-
-    if (!emailRegex.test(email)) {
-
+    if (!emailRegex.test(email))
       return res.json({ success: false, message: "Invalid email" });
-
-    }
 
     const list = [
       ...new Set(
@@ -189,28 +189,19 @@ app.post("/send", requireAuth, async (req, res) => {
       )
     ];
 
-    if (!list.length) {
-
+    if (!list.length)
       return res.json({ success: false, message: "No recipients" });
 
-    }
-
-    if (!checkDailyLimit(email, list.length)) {
-
+    if (!checkDailyLimit(email, list.length))
       return res.json({ success: false, message: "Daily limit reached" });
-
-    }
 
     const transporter = nodemailer.createTransport({
 
       service: "gmail",
 
       auth: {
-
         user: email,
-
         pass: password
-
       }
 
     });
@@ -231,23 +222,16 @@ app.post("/send", requireAuth, async (req, res) => {
 
         batch.map(to =>
           transporter.sendMail({
-
             from: `"${finalName}" <${email}>`,
-
             to,
-
             subject: finalSubject,
-
             text: finalText
-
           })
         )
       );
 
       result.forEach(r => {
-
         if (r.status === "fulfilled") sent++;
-
       });
 
       await delay(BATCH_DELAY);
@@ -255,21 +239,15 @@ app.post("/send", requireAuth, async (req, res) => {
     }
 
     res.json({
-
       success: true,
-
       message: `Send ${sent}`
-
     });
 
   } catch (err) {
 
     res.json({
-
       success: false,
-
       message: "Sending failed"
-
     });
 
   }
@@ -279,7 +257,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-
   console.log("Server running on port " + PORT);
-
 });
