@@ -13,20 +13,21 @@ const PORT = 8080;
 
 const LOGIN_KEY = "^%%^&^&%$$#$$%#";
 
-const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000; // 1 hour
+const SESSION_SECRET = crypto.randomBytes(64).toString("hex");
+const SESSION_TIME = 60 * 60 * 1000;
 
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
 const DAILY_LIMIT = 500;
+const HOURLY_LIMIT = 100;
 
-/* ================= BASIC ================= */
+/* ================= BASE ================= */
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "25kb" }));
-app.use(express.urlencoded({ extended: false, limit: "25kb" }));
+app.use(express.json({ limit: "20kb" }));
+app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -49,30 +50,37 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
 
 /* ================= RATE LIMIT ================= */
 
-const ipLimiter = new Map();
+const ipStore = new Map();
 
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
-  const rec = ipLimiter.get(ip);
+  const rec = ipStore.get(ip);
 
   if (!rec || now - rec.start > 60000) {
-    ipLimiter.set(ip, { count: 1, start: now });
+    ipStore.set(ip, { count: 1, start: now });
     return next();
   }
 
-  if (rec.count > 100) {
+  if (rec.count > 120) {
     return res.status(429).send("Too many requests");
   }
 
   rec.count++;
   next();
 });
+
+/* ================= LOGIN PROTECTION ================= */
+
+const loginAttempts = new Map();
+const MAX_ATTEMPTS = 5;
+const BLOCK_TIME = 15 * 60 * 1000;
 
 /* ================= HELPERS ================= */
 
@@ -85,29 +93,38 @@ function cleanHeader(str = "", max = 120) {
 }
 
 function preserveText(str = "", max = 20000) {
-  return str
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .slice(0, max);
+  return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
 }
 
-/* ================= DAILY LIMIT ================= */
+/* ================= LIMIT SYSTEM ================= */
 
 const dailyMap = new Map();
+const hourlyMap = new Map();
 
-function checkDailyLimit(sender, count) {
+function checkLimits(sender, count) {
   const now = Date.now();
-  const rec = dailyMap.get(sender);
 
-  if (!rec || now - rec.start > 86400000) {
+  // DAILY
+  const d = dailyMap.get(sender);
+  if (!d || now - d.start > 86400000) {
     dailyMap.set(sender, { count: 0, start: now });
   }
 
-  const updated = dailyMap.get(sender);
+  const dNow = dailyMap.get(sender);
+  if (dNow.count + count > DAILY_LIMIT) return "daily";
 
-  if (updated.count + count > DAILY_LIMIT) return false;
+  // HOURLY
+  const h = hourlyMap.get(sender);
+  if (!h || now - h.start > 3600000) {
+    hourlyMap.set(sender, { count: 0, start: now });
+  }
 
-  updated.count += count;
+  const hNow = hourlyMap.get(sender);
+  if (hNow.count + count > HOURLY_LIMIT) return "hourly";
+
+  dNow.count += count;
+  hNow.count += count;
+
   return true;
 }
 
@@ -124,13 +141,31 @@ app.get("/", (req, res) => {
 
 app.post("/login", (req, res) => {
   const { username, password } = req.body || {};
+  const ip = req.ip;
+  const now = Date.now();
+
+  const rec = loginAttempts.get(ip);
+
+  if (rec && rec.blockUntil > now) {
+    return res.json({ success: false, message: "Try later" });
+  }
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
+    loginAttempts.delete(ip);
     req.session.user = LOGIN_KEY;
     return res.json({ success: true });
   }
 
-  return res.json({ success: false });
+  if (!rec) {
+    loginAttempts.set(ip, { count: 1 });
+  } else {
+    rec.count++;
+    if (rec.count >= MAX_ATTEMPTS) {
+      rec.blockUntil = now + BLOCK_TIME;
+    }
+  }
+
+  res.json({ success: false });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -144,7 +179,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= SEND ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -169,15 +204,17 @@ app.post("/send", requireAuth, async (req, res) => {
     if (!list.length)
       return res.json({ success: false, message: "No recipients" });
 
-    if (!checkDailyLimit(email, list.length))
+    const limitCheck = checkLimits(email, list.length);
+
+    if (limitCheck === "daily")
       return res.json({ success: false, message: "Daily limit reached" });
+
+    if (limitCheck === "hourly")
+      return res.json({ success: false, message: "Hourly limit reached" });
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
@@ -209,13 +246,13 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(BATCH_DELAY);
     }
 
-    return res.json({
+    res.json({
       success: true,
       message: `Send ${sent}`
     });
 
   } catch (err) {
-    return res.json({
+    res.json({
       success: false,
       message: "Sending failed"
     });
@@ -225,5 +262,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Secure server running on port " + PORT);
 });
