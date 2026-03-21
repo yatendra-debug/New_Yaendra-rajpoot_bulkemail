@@ -9,21 +9,19 @@ const crypto = require("crypto");
 const app = express();
 const PORT = 8080;
 
-/* ================= LOGIN ================= */
+/* ================= CONFIG ================= */
 
 const LOGIN_KEY = "^%%^&^&%$$#$$%#";
 
-/* ================= CONFIG ================= */
-
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000;
+const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 500;
+const DAILY_LIMIT = 400;
 
-/* ================= EXPRESS ================= */
+/* ================= BASIC SETUP ================= */
 
 app.disable("x-powered-by");
 
@@ -56,26 +54,24 @@ app.use((req, res, next) => {
 
 /* ================= RATE LIMIT ================= */
 
-const ipLimiter = new Map();
+const ipLimit = new Map();
 
 app.use((req, res, next) => {
-
   const ip = req.ip;
   const now = Date.now();
-  const record = ipLimiter.get(ip);
+  const data = ipLimit.get(ip);
 
-  if (!record || now - record.start > 60000) {
-    ipLimiter.set(ip, { count: 1, start: now });
+  if (!data || now - data.start > 60000) {
+    ipLimit.set(ip, { count: 1, start: now });
     return next();
   }
 
-  if (record.count > 120) {
+  if (data.count > 100) {
     return res.status(429).send("Too many requests");
   }
 
-  record.count++;
+  data.count++;
   next();
-
 });
 
 /* ================= HELPERS ================= */
@@ -84,47 +80,39 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanHeader(text = "", max = 120) {
-  return text.replace(/[\r\n]/g, "").trim().slice(0, max);
+function cleanHeader(str = "", max = 120) {
+  return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function preserveText(text = "", max = 20000) {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
+function preserveText(str = "", max = 20000) {
+  return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
 }
 
 /* ================= DAILY LIMIT ================= */
 
-const dailyCounter = new Map();
+const dailyMap = new Map();
 
-function checkDailyLimit(sender, amount) {
-
+function checkDailyLimit(sender, count) {
   const now = Date.now();
-  const record = dailyCounter.get(sender);
+  const rec = dailyMap.get(sender);
 
-  if (!record || now - record.start > 86400000) {
-    dailyCounter.set(sender, { count: 0, start: now });
+  if (!rec || now - rec.start > 86400000) {
+    dailyMap.set(sender, { count: 0, start: now });
   }
 
-  const updated = dailyCounter.get(sender);
+  const updated = dailyMap.get(sender);
 
-  if (updated.count + amount > DAILY_LIMIT) {
-    return false;
-  }
+  if (updated.count + count > DAILY_LIMIT) return false;
 
-  updated.count += amount;
-
+  updated.count += count;
   return true;
-
 }
 
 /* ================= AUTH ================= */
 
 function requireAuth(req, res, next) {
-
   if (req.session.user === LOGIN_KEY) return next();
-
-  res.redirect("/");
-
+  return res.redirect("/");
 }
 
 app.get("/", (req, res) => {
@@ -132,45 +120,31 @@ app.get("/", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-
   const { username, password } = req.body || {};
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
-
     req.session.user = LOGIN_KEY;
-
     return res.json({ success: true });
-
   }
 
-  res.json({ success: false });
-
+  return res.json({ success: false });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
-
   res.sendFile(path.join(__dirname, "public/launcher.html"));
-
 });
 
 app.post("/logout", (req, res) => {
-
   req.session.destroy(() => {
-
     res.clearCookie("secure.sid");
-
     res.json({ success: true });
-
   });
-
 });
 
 /* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
-
   try {
-
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
@@ -196,14 +170,8 @@ app.post("/send", requireAuth, async (req, res) => {
       return res.json({ success: false, message: "Daily limit reached" });
 
     const transporter = nodemailer.createTransport({
-
       service: "gmail",
-
-      auth: {
-        user: email,
-        pass: password
-      }
-
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
@@ -215,11 +183,9 @@ app.post("/send", requireAuth, async (req, res) => {
     let sent = 0;
 
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
-
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      const result = await Promise.allSettled(
-
+      const results = await Promise.allSettled(
         batch.map(to =>
           transporter.sendMail({
             from: `"${finalName}" <${email}>`,
@@ -230,28 +196,24 @@ app.post("/send", requireAuth, async (req, res) => {
         )
       );
 
-      result.forEach(r => {
+      results.forEach(r => {
         if (r.status === "fulfilled") sent++;
       });
 
       await delay(BATCH_DELAY);
-
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: `Send ${sent}`
     });
 
   } catch (err) {
-
-    res.json({
+    return res.json({
       success: false,
       message: "Sending failed"
     });
-
   }
-
 });
 
 /* ================= START ================= */
