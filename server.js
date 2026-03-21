@@ -19,9 +19,9 @@ const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 400;
+const DAILY_LIMIT = 500;
 
-/* ================= BASIC SETUP ================= */
+/* ================= BASIC ================= */
 
 app.disable("x-powered-by");
 
@@ -54,23 +54,23 @@ app.use((req, res, next) => {
 
 /* ================= RATE LIMIT ================= */
 
-const ipLimit = new Map();
+const ipLimiter = new Map();
 
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
-  const data = ipLimit.get(ip);
+  const rec = ipLimiter.get(ip);
 
-  if (!data || now - data.start > 60000) {
-    ipLimit.set(ip, { count: 1, start: now });
+  if (!rec || now - rec.start > 60000) {
+    ipLimiter.set(ip, { count: 1, start: now });
     return next();
   }
 
-  if (data.count > 100) {
+  if (rec.count > 100) {
     return res.status(429).send("Too many requests");
   }
 
-  data.count++;
+  rec.count++;
   next();
 });
 
@@ -85,7 +85,10 @@ function cleanHeader(str = "", max = 120) {
 }
 
 function preserveText(str = "", max = 20000) {
-  return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
+  return str
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .slice(0, max);
 }
 
 /* ================= DAILY LIMIT ================= */
@@ -171,7 +174,10 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
     await transporter.verify();
