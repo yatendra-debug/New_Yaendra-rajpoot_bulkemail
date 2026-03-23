@@ -19,8 +19,8 @@ const SESSION_TIME = 60 * 60 * 1000;
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 500;
-const HOURLY_LIMIT = 100;
+const DAILY_LIMIT = 400;
+const HOURLY_LIMIT = 80;
 
 /* ================= BASIC ================= */
 
@@ -67,7 +67,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 120) {
+  if (rec.count > 100) {
     return res.status(429).send("Too many requests");
   }
 
@@ -103,7 +103,6 @@ const hourlyMap = new Map();
 function checkLimits(sender, count) {
   const now = Date.now();
 
-  // daily
   const d = dailyMap.get(sender);
   if (!d || now - d.start > 86400000) {
     dailyMap.set(sender, { count: 0, start: now });
@@ -112,7 +111,6 @@ function checkLimits(sender, count) {
   const dNow = dailyMap.get(sender);
   if (dNow.count + count > DAILY_LIMIT) return "daily";
 
-  // hourly
   const h = hourlyMap.get(sender);
   if (!h || now - h.start > 3600000) {
     hourlyMap.set(sender, { count: 0, start: now });
