@@ -22,6 +22,37 @@ const BATCH_DELAY = 300;
 const DAILY_LIMIT = 400;
 const HOURLY_LIMIT = 80;
 
+/* ================= SAFE WORD MODE ================= */
+
+// true = risky words ko neutral words me convert karega
+const SAFE_MODE = true;
+
+const WORD_MAP = {
+  error: "small issue",
+  problem: "minor concern",
+  issue: "detail",
+  report: "note",
+  screenshot: "reference",
+  image: "visual",
+  price: "details",
+  cost: "information",
+  urgent: "important",
+  immediately: "at your convenience"
+};
+
+function sanitizeContent(text = "") {
+  if (!SAFE_MODE) return text;
+
+  let output = text;
+
+  for (const key in WORD_MAP) {
+    const regex = new RegExp(`\\b${key}\\b`, "gi");
+    output = output.replace(regex, WORD_MAP[key]);
+  }
+
+  return output;
+}
+
 /* ================= BASIC ================= */
 
 app.disable("x-powered-by");
@@ -75,12 +106,6 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ================= LOGIN PROTECTION ================= */
-
-const loginMap = new Map();
-const MAX_ATTEMPTS = 5;
-const BLOCK_TIME = 15 * 60 * 1000;
-
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
@@ -95,7 +120,7 @@ function preserveText(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
 }
 
-/* ================= LIMIT SYSTEM ================= */
+/* ================= LIMIT ================= */
 
 const dailyMap = new Map();
 const hourlyMap = new Map();
@@ -138,28 +163,10 @@ app.get("/", (req, res) => {
 
 app.post("/login", (req, res) => {
   const { username, password } = req.body || {};
-  const ip = req.ip;
-  const now = Date.now();
-
-  const rec = loginMap.get(ip);
-
-  if (rec && rec.blockUntil > now) {
-    return res.json({ success: false, message: "Try later" });
-  }
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
-    loginMap.delete(ip);
     req.session.user = LOGIN_KEY;
     return res.json({ success: true });
-  }
-
-  if (!rec) {
-    loginMap.set(ip, { count: 1 });
-  } else {
-    rec.count++;
-    if (rec.count >= MAX_ATTEMPTS) {
-      rec.blockUntil = now + BLOCK_TIME;
-    }
   }
 
   return res.json({ success: false });
@@ -167,13 +174,6 @@ app.post("/login", (req, res) => {
 
 app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
-});
-
-app.post("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.clearCookie("secure.sid");
-    res.json({ success: true });
-  });
 });
 
 /* ================= SEND ================= */
@@ -184,10 +184,10 @@ app.post("/send", requireAuth, async (req, res) => {
       req.body || {};
 
     if (!email || !password || !recipients)
-      return res.json({ success: false, message: "Missing fields" });
+      return res.json({ success: false });
 
     if (!emailRegex.test(email))
-      return res.json({ success: false, message: "Invalid email" });
+      return res.json({ success: false });
 
     const list = [
       ...new Set(
@@ -199,15 +199,12 @@ app.post("/send", requireAuth, async (req, res) => {
     ];
 
     if (!list.length)
-      return res.json({ success: false, message: "No recipients" });
+      return res.json({ success: false });
 
     const limit = checkLimits(email, list.length);
 
-    if (limit === "daily")
-      return res.json({ success: false, message: "Daily limit reached" });
-
-    if (limit === "hourly")
-      return res.json({ success: false, message: "Hourly limit reached" });
+    if (limit !== true)
+      return res.json({ success: false, message: "Limit reached" });
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -217,8 +214,8 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = cleanHeader(senderName || email);
-    const finalSubject = cleanHeader(subject || "Message");
-    const finalText = preserveText(message || "");
+    const finalSubject = sanitizeContent(cleanHeader(subject || "Message"));
+    const finalText = sanitizeContent(preserveText(message || ""));
 
     let sent = 0;
 
@@ -243,16 +240,10 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(BATCH_DELAY);
     }
 
-    return res.json({
-      success: true,
-      message: `Send ${sent}`
-    });
+    res.json({ success: true, message: `Send ${sent}` });
 
-  } catch (err) {
-    return res.json({
-      success: false,
-      message: "Sending failed"
-    });
+  } catch {
+    res.json({ success: false });
   }
 });
 
