@@ -19,17 +19,14 @@ const SESSION_TIME = 60 * 60 * 1000;
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 400;
-const HOURLY_LIMIT = 80;
+const DAILY_LIMIT = 350;
+const HOURLY_LIMIT = 70;
 
-/* ================= SAFE WORD MODE ================= */
+/* ================= SAFE TEXT NORMALIZER ================= */
 
-// true = risky words ko neutral words me convert karega
-const SAFE_MODE = true;
-
-const WORD_MAP = {
+const SAFE_WORDS = {
   error: "small issue",
-  problem: "minor concern",
+  problem: "minor point",
   issue: "detail",
   report: "note",
   screenshot: "reference",
@@ -37,20 +34,18 @@ const WORD_MAP = {
   price: "details",
   cost: "information",
   urgent: "important",
-  immediately: "at your convenience"
+  immediately: "when convenient"
 };
 
-function sanitizeContent(text = "") {
-  if (!SAFE_MODE) return text;
+function normalizeText(text = "") {
+  let out = text;
 
-  let output = text;
-
-  for (const key in WORD_MAP) {
-    const regex = new RegExp(`\\b${key}\\b`, "gi");
-    output = output.replace(regex, WORD_MAP[key]);
+  for (const word in SAFE_WORDS) {
+    const re = new RegExp(`\\b${word}\\b`, "gi");
+    out = out.replace(re, SAFE_WORDS[word]);
   }
 
-  return output;
+  return out;
 }
 
 /* ================= BASIC ================= */
@@ -109,7 +104,6 @@ app.use((req, res, next) => {
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function cleanHeader(str = "", max = 120) {
@@ -120,7 +114,7 @@ function preserveText(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
 }
 
-/* ================= LIMIT ================= */
+/* ================= LIMIT SYSTEM ================= */
 
 const dailyMap = new Map();
 const hourlyMap = new Map();
@@ -202,7 +196,6 @@ app.post("/send", requireAuth, async (req, res) => {
       return res.json({ success: false });
 
     const limit = checkLimits(email, list.length);
-
     if (limit !== true)
       return res.json({ success: false, message: "Limit reached" });
 
@@ -214,8 +207,8 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = cleanHeader(senderName || email);
-    const finalSubject = sanitizeContent(cleanHeader(subject || "Message"));
-    const finalText = sanitizeContent(preserveText(message || ""));
+    const finalSubject = normalizeText(cleanHeader(subject || "Message"));
+    const finalText = normalizeText(preserveText(message || ""));
 
     let sent = 0;
 
