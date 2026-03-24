@@ -19,34 +19,8 @@ const SESSION_TIME = 60 * 60 * 1000;
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 350;
-const HOURLY_LIMIT = 70;
-
-/* ================= SAFE TEXT NORMALIZER ================= */
-
-const SAFE_WORDS = {
-  error: "small issue",
-  problem: "minor point",
-  issue: "detail",
-  report: "note",
-  screenshot: "reference",
-  image: "visual",
-  price: "details",
-  cost: "information",
-  urgent: "important",
-  immediately: "when convenient"
-};
-
-function normalizeText(text = "") {
-  let out = text;
-
-  for (const word in SAFE_WORDS) {
-    const re = new RegExp(`\\b${word}\\b`, "gi");
-    out = out.replace(re, SAFE_WORDS[word]);
-  }
-
-  return out;
-}
+const DAILY_LIMIT = 300;
+const HOURLY_LIMIT = 60;
 
 /* ================= BASIC ================= */
 
@@ -62,6 +36,7 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    rolling: true, // activity pe session refresh
     cookie: {
       httpOnly: true,
       sameSite: "strict",
@@ -76,6 +51,7 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
 
@@ -166,6 +142,18 @@ app.post("/login", (req, res) => {
   return res.json({ success: false });
 });
 
+/* ✅ FAST LOGOUT (double click friendly) */
+app.post("/logout", (req, res) => {
+  if (!req.session) {
+    return res.json({ success: true });
+  }
+
+  req.session.destroy(err => {
+    res.clearCookie("secure.sid");
+    return res.json({ success: true });
+  });
+});
+
 app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
@@ -207,8 +195,8 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = cleanHeader(senderName || email);
-    const finalSubject = normalizeText(cleanHeader(subject || "Message"));
-    const finalText = normalizeText(preserveText(message || ""));
+    const finalSubject = cleanHeader(subject || "Message");
+    const finalText = preserveText(message || "");
 
     let sent = 0;
 
