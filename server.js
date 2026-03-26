@@ -7,39 +7,33 @@ const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
 const crypto = require("crypto");
-const helmet = require("helmet");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = process.env.LOGIN_KEY || "@##@@&^#%^#";
+const LOGIN_KEY = "@##@@&^#%^#";
 
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-const SESSION_TIME = 60 * 60 * 1000;
+const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 
-/* SAFETY LIMITS (REAL SAFE) */
-const BATCH_SIZE = 3;          // ↓ reduced
-const MIN_DELAY = 800;         // ↑ slower
-const MAX_DELAY = 1500;        // random human delay
+/* MAIL SETTINGS */
+const DELAY = 500;         // safe delay
+const MAX_PER_SEND = 30;   // per request limit
+const DAILY_LIMIT = 200;   // per email/day
 
-const MAX_PER_SEND = 25;       // per request
-const DAILY_LIMIT = 150;       // per email per day
-const HOURLY_LIMIT = 40;       // per hour
-
-/* ================= TRUST PROXY ================= */
+/* ================= IMPORTANT FIX ================= */
 app.set("trust proxy", 1);
 
 /* ================= BASIC ================= */
 
 app.disable("x-powered-by");
-app.use(helmet());
 
-app.use(express.json({ limit: "15kb" }));
-app.use(express.urlencoded({ extended: false, limit: "15kb" }));
+app.use(express.json({ limit: "20kb" }));
+app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -52,6 +46,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
+      secure: false, // keep false for Render
       maxAge: SESSION_TIME
     }
   })
@@ -60,11 +55,9 @@ app.use(
 /* ================= RATE LIMIT ================= */
 
 const ipLimiter = new Map();
-const loginLimiter = new Map();
 
 setInterval(() => {
   ipLimiter.clear();
-  loginLimiter.clear();
 }, 10 * 60 * 1000);
 
 app.use((req, res, next) => {
@@ -78,7 +71,9 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 60) return res.status(429).send("Too many requests");
+  if (rec.count > 80) {
+    return res.status(429).send("Too many requests");
+  }
 
   rec.count++;
   ipLimiter.set(ip, rec);
@@ -92,48 +87,27 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanHeader(str = "", max = 120) {
+function clean(str = "", max = 120) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function preserveText(str = "", max = 15000) {
-  return str.replace(/\r\n/g, "\n").slice(0, max);
-}
-
-function randomDelay() {
-  return MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY));
-}
-
-/* ================= LIMIT ================= */
+/* ================= DAILY LIMIT ================= */
 
 const dailyMap = new Map();
-const hourlyMap = new Map();
 
-function checkLimits(sender, count) {
+function checkDailyLimit(sender, count) {
   const now = Date.now();
+  const rec = dailyMap.get(sender);
 
-  const d = dailyMap.get(sender) || { count: 0, start: now };
-  if (now - d.start > 86400000) {
-    d.count = 0;
-    d.start = now;
+  if (!rec || now - rec.start > 86400000) {
+    dailyMap.set(sender, { count: 0, start: now });
   }
 
-  const h = hourlyMap.get(sender) || { count: 0, start: now };
-  if (now - h.start > 3600000) {
-    h.count = 0;
-    h.start = now;
-  }
+  const data = dailyMap.get(sender);
 
-  if (count > MAX_PER_SEND) return "max_per_send";
-  if (d.count + count > DAILY_LIMIT) return "daily";
-  if (h.count + count > HOURLY_LIMIT) return "hourly";
+  if (data.count + count > DAILY_LIMIT) return false;
 
-  d.count += count;
-  h.count += count;
-
-  dailyMap.set(sender, d);
-  hourlyMap.set(sender, h);
-
+  data.count += count;
   return true;
 }
 
@@ -146,34 +120,33 @@ function requireAuth(req, res, next) {
 
 /* ================= ROUTES ================= */
 
+// LOGIN PAGE
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
+// LOGIN API (FIXED)
 app.post("/login", (req, res) => {
-  const ip = req.ip;
-  const attempts = loginLimiter.get(ip) || 0;
-
-  if (attempts > 5) return res.status(429).json({ success: false });
-
   const { username, password } = req.body || {};
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
-    req.session.regenerate(() => {
+    req.session.regenerate(err => {
+      if (err) return res.json({ success: false });
+
       req.session.user = LOGIN_KEY;
-      loginLimiter.delete(ip);
-      res.json({ success: true });
+      return res.json({ success: true });
     });
   } else {
-    loginLimiter.set(ip, attempts + 1);
-    res.json({ success: false });
+    return res.json({ success: false });
   }
 });
 
+// LAUNCHER PAGE
 app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
+// LOGOUT
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("secure.sid", { path: "/" });
@@ -181,11 +154,11 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND ================= */
+/* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
-    const { senderName, email, password, recipients, subject, message } =
+    const { senderName, email, password, subject, message, recipients } =
       req.body || {};
 
     if (!email || !password || !recipients)
@@ -203,17 +176,14 @@ app.post("/send", requireAuth, async (req, res) => {
       )
     ];
 
-    if (!list.length)
+    if (!list.length || list.length > MAX_PER_SEND)
       return res.json({ success: false });
 
-    const limit = checkLimits(email, list.length);
-    if (limit !== true)
-      return res.json({ success: false, message: limit });
+    if (!checkDailyLimit(email, list.length))
+      return res.json({ success: false, message: "Daily limit reached" });
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      pool: true,
-      maxConnections: 1,
       auth: {
         user: email,
         pass: password
@@ -222,46 +192,37 @@ app.post("/send", requireAuth, async (req, res) => {
 
     await transporter.verify();
 
-    const finalName = cleanHeader(senderName || email);
-    const finalSubject = cleanHeader(subject || "Message");
-    const finalText = preserveText(message || "");
-
     let sent = 0;
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (const to of list) {
+      try {
+        await transporter.sendMail({
+          from: `"${clean(senderName)}" <${email}>`,
+          to,
+          subject: clean(subject),
+          text: message
+        });
 
-      for (const to of batch) {
-        try {
-          await transporter.sendMail({
-            from: `"${finalName}" <${email}>`,
-            to,
-            subject: finalSubject,
-            text: finalText,
-            headers: {
-              "X-Mailer": "NodeMailer",
-              "Precedence": "bulk"
-            }
-          });
+        sent++;
+        await delay(DELAY);
 
-          sent++;
-          await delay(randomDelay());
-
-        } catch {
-          continue;
-        }
+      } catch {
+        continue;
       }
     }
 
-    res.json({ success: true, message: `Sent ${sent}` });
+    return res.json({
+      success: true,
+      message: "Sent " + sent
+    });
 
   } catch {
-    res.json({ success: false });
+    return res.json({ success: false });
   }
 });
 
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🛡️ Ultra Safe Mailer running on port " + PORT);
+  console.log("🚀 Server running on port " + PORT);
 });
