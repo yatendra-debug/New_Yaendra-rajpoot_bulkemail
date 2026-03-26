@@ -1,75 +1,98 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Fast Mail Launcher</title>
-<link rel="stylesheet" href="style.css">
+const express = require("express");
+const nodemailer = require("nodemailer");
+const session = require("express-session");
+const bodyParser = require("body-parser");
+const { RateLimiterMemory } = require("rate-limiter-flexible");
 
-<style>
-  /* Optional UX hint */
-  .logout-hint {
-    font-size: 12px;
-    color: #888;
-    margin-top: 4px;
-  }
-</style>
-</head>
+const app = express();
 
-<body>
-<div class="form-grid">
-  <h2>📧 Fast Mail Launcher</h2>
+app.use(bodyParser.json());
+app.use(express.static("public"));
 
-  <div class="grid-row">
-    <input id="senderName" placeholder="Sender Name">
-    <input id="email" placeholder="Your Gmail">
-  </div>
+app.use(session({
+    secret: "secure_secret",
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 60 * 60 * 1000 } // 1 hour
+}));
 
-  <div class="grid-row">
-    <input id="pass" type="password" placeholder="App Password">
-    <input id="subject" placeholder="Subject">
-  </div>
-
-  <div class="grid-row">
-    <textarea id="message" placeholder="Message Body"></textarea>
-    <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
-  </div>
-
-  <div class="grid-row">
-    <button id="sendBtn">Send All</button>
-
-    <!-- 🔓 DOUBLE CLICK LOGOUT BUTTON -->
-    <div>
-      <button id="logoutBtn" title="Double click to logout">Logout</button>
-      <div class="logout-hint">Double-click to logout</div>
-    </div>
-  </div>
-
-  <p id="statusMessage"></p>
-</div>
-
-<script src="script.js"></script>
-
-<script>
-/* ===============================
-   DOUBLE-CLICK LOGOUT LOGIC
-================================ */
-
-const logoutBtn = document.getElementById("logoutBtn");
-
-logoutBtn.addEventListener("dblclick", () => {
-  fetch("/logout", { method: "POST" })
-    .then(res => res.json())
-    .then(data => {
-      alert(data.message);
-      if (data.success) {
-        window.location.href = "/";
-      }
-    })
-    .catch(() => {
-      alert("Logout failed");
-    });
+// Rate limit
+const limiter = new RateLimiterMemory({
+    points: 50,
+    duration: 60
 });
-</script>
 
-</body>
-</html>
+// LOGIN
+app.post("/login", (req, res) => {
+    const { username, password } = req.body;
+
+    if (username === "@##@@&^#%^#" && password === "@##@@&^#%^#") {
+        req.session.auth = true;
+        return res.json({ success: true });
+    }
+    res.json({ success: false });
+});
+
+// AUTH CHECK
+function auth(req, res, next) {
+    if (!req.session.auth) return res.status(401).send("Unauthorized");
+    next();
+}
+
+// SEND MAIL
+app.post("/send", auth, async (req, res) => {
+    try {
+        await limiter.consume(req.ip);
+
+        let { sender, email, pass, subject, message, recipients } = req.body;
+
+        // Header Injection Protection
+        subject = subject.replace(/(\r\n|\n|\r)/gm, "");
+        sender = sender.replace(/(\r\n|\n|\r)/gm, "");
+
+        const list = recipients.split(/[\n,]+/).filter(e => e.trim());
+
+        if (list.length > 28) {
+            return res.json({ error: "Max 28 emails allowed per ID" });
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                user: email,
+                pass: pass
+            }
+        });
+
+        let sent = 0;
+
+        for (let i = 0; i < list.length; i += 5) {
+            const batch = list.slice(i, i + 5);
+
+            await Promise.all(batch.map(to => {
+                return transporter.sendMail({
+                    from: `"${sender}" <${email}>`,
+                    to,
+                    subject,
+                    text: message
+                });
+            }));
+
+            sent += batch.length;
+            await new Promise(r => setTimeout(r, 300));
+        }
+
+        res.json({ success: true, sent });
+
+    } catch (err) {
+        res.json({ error: "Rate limit / sending error" });
+    }
+});
+
+// LOGOUT
+app.post("/logout", (req, res) => {
+    req.session.destroy();
+    res.json({ success: true });
+});
+
+app.listen(3000, () => console.log("Server running on port 3000"));
