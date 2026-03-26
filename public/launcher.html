@@ -8,18 +8,27 @@
 <body ondblclick="logout()">
 
 <div class="card">
-<h2>🚀 Fast Mail Launcher</h2>
+<h2>📧 Fast Mail Launcher</h2>
 
+<div class="row">
 <input id="senderName" placeholder="Sender Name">
 <input id="email" placeholder="Your Gmail">
+</div>
+
+<div class="row">
 <input id="password" placeholder="App Password">
 <input id="subject" placeholder="Subject">
+</div>
 
-<textarea id="message" placeholder="Message"></textarea>
-<textarea id="recipients" placeholder="Recipients"></textarea>
+<div class="row">
+<textarea id="message" placeholder="Message Body"></textarea>
+<textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
+</div>
 
 <button onclick="sendMail()">Send All</button>
 <button onclick="logout()">Logout</button>
+
+<p style="font-size:12px;">Double-click anywhere to logout</p>
 
 </div>
 
