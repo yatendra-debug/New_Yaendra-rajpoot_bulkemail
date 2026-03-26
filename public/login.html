@@ -21,6 +21,7 @@ async function login() {
   const res = await fetch("/login", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
+    credentials: "include",
     body: JSON.stringify({
       username: username.value,
       password: password.value
@@ -30,7 +31,7 @@ async function login() {
   const data = await res.json();
 
   if (data.success) {
-    location.href = "/launcher";
+    window.location.href = "/launcher";
   } else {
     alert("Wrong login");
   }
