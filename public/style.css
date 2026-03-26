@@ -1,26 +1,31 @@
-body {
-  font-family: Arial;
-  background: #f3f4f6;
+async function sendMail() {
+  const res = await fetch("/send", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    credentials: "include",
+    body: JSON.stringify({
+      senderName: senderName.value,
+      email: email.value,
+      password: password.value,
+      subject: subject.value,
+      message: message.value,
+      recipients: recipients.value
+    })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    alert(data.message);
+  } else {
+    alert("Error / Limit reached");
+  }
 }
 
-.card {
-  width: 500px;
-  margin: 60px auto;
-  padding: 20px;
-  background: white;
-  border-radius: 10px;
-}
-
-input, textarea {
-  width: 100%;
-  margin: 10px 0;
-  padding: 10px;
-}
-
-button {
-  width: 100%;
-  padding: 10px;
-  background: blue;
-  color: white;
-  border: none;
+async function logout() {
+  await fetch("/logout", {
+    method: "POST",
+    credentials: "include"
+  });
+  location.href = "/";
 }
