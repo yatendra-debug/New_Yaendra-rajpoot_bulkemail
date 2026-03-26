@@ -16,13 +16,13 @@ const LOGIN_KEY = "#$@$#@$@@%%@%@$%@A";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SAFE LIMITS */
-const BATCH_SIZE = 3;          // safer than 5
-const MIN_DELAY = 800;
-const MAX_DELAY = 1400;
+/* SPEED CONFIG (AS YOU WANT) */
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 300;
 
+/* SAFE LIMITS */
 const DAILY_LIMIT = 300;
-const HOURLY_LIMIT = 60;
+const HOURLY_LIMIT = 80;
 
 /* ================= FIX ================= */
 app.set("trust proxy", 1);
@@ -51,7 +51,7 @@ app.use(
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
+/* ================= SECURITY ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
@@ -92,10 +92,6 @@ app.use((req, res, next) => {
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
-function randomDelay() {
-  return MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY));
-}
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -152,7 +148,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-/* LOGIN (SAFE) */
+/* LOGIN */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
@@ -185,7 +181,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= SEND ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -217,7 +213,8 @@ app.post("/send", requireAuth, async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       pool: true,
-      maxConnections: 1,
+      maxConnections: 2,
+      maxMessages: 100,
       auth: {
         user: email,
         pass: password
@@ -235,26 +232,25 @@ app.post("/send", requireAuth, async (req, res) => {
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (const to of batch) {
-        try {
-          await transporter.sendMail({
+      const results = await Promise.allSettled(
+        batch.map(to =>
+          transporter.sendMail({
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
             text: finalText,
             headers: {
-              "X-Mailer": "NodeMailer",
-              "Precedence": "bulk"
+              "X-Mailer": "NodeMailer"
             }
-          });
+          })
+        )
+      );
 
-          sent++;
-          await delay(randomDelay());
+      results.forEach(r => {
+        if (r.status === "fulfilled") sent++;
+      });
 
-        } catch {
-          continue;
-        }
-      }
+      await delay(BATCH_DELAY);
     }
 
     res.json({ success: true, message: "Sent " + sent });
@@ -267,5 +263,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Ultra Safe Server running on port " + PORT);
+  console.log("⚡ Fast Mailer running on port " + PORT);
 });
