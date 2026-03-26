@@ -4,16 +4,13 @@ const express = require("express");
 const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
-const crypto = require("crypto");
 const helmet = require("helmet");
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
 /* CONFIG */
 const LOGIN_KEY = "@##@@&^#%^#";
-const SESSION_SECRET = crypto.randomBytes(64).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000;
 
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
@@ -21,18 +18,19 @@ const BATCH_DELAY = 300;
 const DAILY_LIMIT = 400;
 const HOURLY_LIMIT = 80;
 
-/* BASIC */
+/* MIDDLEWARE */
 app.use(helmet());
 app.use(express.json());
 app.use(express.static("public"));
 
 app.use(session({
-  secret: SESSION_SECRET,
+  name: "secure.sid",
+  secret: "super_secret_key_123",
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    maxAge: SESSION_TIME
+    maxAge: 60 * 60 * 1000
   }
 }));
 
@@ -50,9 +48,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 100) {
-    return res.status(429).send("Too many requests");
-  }
+  if (rec.count > 100) return res.status(429).send("Too many requests");
 
   rec.count++;
   ipMap.set(ip, rec);
@@ -103,17 +99,17 @@ function checkLimits(sender, count) {
 /* AUTH */
 function requireAuth(req, res, next) {
   if (req.session.user === LOGIN_KEY) return next();
-  res.status(401).send("Unauthorized");
+  res.status(401).redirect("/");
 }
 
 /* ROUTES */
 
-// Login page
+// LOGIN PAGE
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// Login API
+// LOGIN API
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -125,12 +121,12 @@ app.post("/login", (req, res) => {
   res.json({ success: false });
 });
 
-// Launcher page
+// LAUNCHER PAGE
 app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-// Send mail
+// SEND MAIL
 app.post("/send", requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, subject, message, recipients } = req.body;
@@ -138,16 +134,14 @@ app.post("/send", requireAuth, async (req, res) => {
     if (!emailRegex.test(email)) return res.json({ success: false });
 
     const list = recipients.split(/[\n,]+/)
-      .map(r => r.trim())
-      .filter(r => emailRegex.test(r));
+      .map(e => e.trim())
+      .filter(e => emailRegex.test(e));
 
-    if (!list.length || list.length > 28) {
+    if (!list.length || list.length > 28)
       return res.json({ success: false });
-    }
 
-    if (!checkLimits(email, list.length)) {
+    if (!checkLimits(email, list.length))
       return res.json({ success: false, message: "Limit reached" });
-    }
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -157,7 +151,7 @@ app.post("/send", requireAuth, async (req, res) => {
     let sent = 0;
 
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + 5);
+      const batch = list.slice(i, i + BATCH_SIZE);
 
       await Promise.all(batch.map(to =>
         transporter.sendMail({
@@ -179,7 +173,7 @@ app.post("/send", requireAuth, async (req, res) => {
   }
 });
 
-// Logout
+// LOGOUT
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
     res.json({ success: true });
@@ -188,5 +182,5 @@ app.post("/logout", (req, res) => {
 
 /* START */
 app.listen(PORT, () => {
-  console.log("Server running on http://localhost:" + PORT);
+  console.log("Server running on port " + PORT);
 });
