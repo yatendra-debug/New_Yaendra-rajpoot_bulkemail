@@ -19,15 +19,15 @@ const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300; // ms
 
-const DAILY_LIMIT = 350;
-const HOURLY_LIMIT = 70;
+const DAILY_LIMIT = 500;
+const HOURLY_LIMIT = 100;
 
 /* ================= BASIC ================= */
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "20kb" }));
-app.use(express.urlencoded({ extended: false, limit: "20kb" }));
+app.use(express.json({ limit: "25kb" }));
+app.use(express.urlencoded({ extended: false, limit: "25kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -54,17 +54,17 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ================= RATE LIMIT ================= */
+/* ================= SIMPLE RATE LIMIT ================= */
 
-const ipMap = new Map();
+const ipLimiter = new Map();
 
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
-  const rec = ipMap.get(ip);
+  const rec = ipLimiter.get(ip);
 
   if (!rec || now - rec.start > 60000) {
-    ipMap.set(ip, { count: 1, start: now });
+    ipLimiter.set(ip, { count: 1, start: now });
     return next();
   }
 
@@ -79,10 +79,9 @@ app.use((req, res, next) => {
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanHeader(str = "", max = 120) {
+function cleanHeader(str = "", max = 150) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
@@ -99,8 +98,8 @@ function checkLimits(sender, count) {
   const now = Date.now();
 
   // Daily reset
-  const d = dailyMap.get(sender);
-  if (!d || now - d.start > 86400000) {
+  const daily = dailyMap.get(sender);
+  if (!daily || now - daily.start > 86400000) {
     dailyMap.set(sender, { count: 0, start: now });
   }
 
@@ -108,8 +107,8 @@ function checkLimits(sender, count) {
   if (dNow.count + count > DAILY_LIMIT) return "daily";
 
   // Hourly reset
-  const h = hourlyMap.get(sender);
-  if (!h || now - h.start > 3600000) {
+  const hourly = hourlyMap.get(sender);
+  if (!hourly || now - hourly.start > 3600000) {
     hourlyMap.set(sender, { count: 0, start: now });
   }
 
@@ -128,6 +127,8 @@ function requireAuth(req, res, next) {
   if (req.session.user === LOGIN_KEY) return next();
   return res.redirect("/");
 }
+
+/* ================= ROUTES ================= */
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
@@ -149,15 +150,13 @@ app.get("/launcher", requireAuth, (req, res) => {
 });
 
 app.post("/logout", (req, res) => {
-  if (!req.session) return res.json({ success: true });
-
   req.session.destroy(() => {
     res.clearCookie("secure.sid");
-    return res.json({ success: true });
+    res.json({ success: true });
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= SEND ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -197,7 +196,10 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
     await transporter.verify();
