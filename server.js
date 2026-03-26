@@ -1,35 +1,42 @@
 "use strict";
 
+require("dotenv").config();
+
 const express = require("express");
 const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
 const crypto = require("crypto");
+const helmet = require("helmet");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
+const LOGIN_KEY = process.env.LOGIN_KEY || "@##@@&^#%^#";
 
-const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
+const SESSION_SECRET =
+  process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+
 const SESSION_TIME = 60 * 60 * 1000;
 
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BASE_DELAY = 400; // increased for safety
 
-const DAILY_LIMIT = 500;
+const DAILY_LIMIT = 300; // safer than 500
 
-/* ================= FIX FOR RENDER ================= */
+/* ================= TRUST PROXY ================= */
 app.set("trust proxy", 1);
 
 /* ================= BASIC ================= */
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "25kb" }));
-app.use(express.urlencoded({ extended: false, limit: "25kb" }));
+app.use(helmet());
+
+app.use(express.json({ limit: "20kb" }));
+app.use(express.urlencoded({ extended: false, limit: "20kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -47,15 +54,6 @@ app.use(
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
-
-app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
-
 /* ================= RATE LIMIT ================= */
 
 const ipLimiter = new Map();
@@ -69,18 +67,19 @@ setInterval(() => {
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
-  const rec = ipLimiter.get(ip);
 
-  if (!rec || now - rec.start > 60000) {
-    ipLimiter.set(ip, { count: 1, start: now });
+  const rec = ipLimiter.get(ip) || { count: 0, time: now };
+
+  if (now - rec.time > 60000) {
+    ipLimiter.set(ip, { count: 1, time: now });
     return next();
   }
 
-  if (rec.count > 100) {
-    return res.status(429).send("Too many requests");
-  }
+  if (rec.count > 80) return res.status(429).send("Too many requests");
 
   rec.count++;
+  ipLimiter.set(ip, rec);
+
   next();
 });
 
@@ -95,7 +94,7 @@ function cleanHeader(str = "", max = 120) {
 }
 
 function preserveText(str = "", max = 20000) {
-  return str.replace(/\r\n/g, "\n").replace(/\r/g, "\n").slice(0, max);
+  return str.replace(/\r\n/g, "\n").slice(0, max);
 }
 
 /* ================= DAILY LIMIT ================= */
@@ -131,14 +130,12 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-/* LOGIN (BRUTE FORCE SAFE) */
+/* LOGIN SAFE */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
 
-  if (attempts > 5) {
-    return res.status(429).json({ success: false });
-  }
+  if (attempts > 5) return res.status(429).json({ success: false });
 
   const { username, password } = req.body || {};
 
@@ -149,11 +146,11 @@ app.post("/login", (req, res) => {
       req.session.user = LOGIN_KEY;
       loginLimiter.delete(ip);
 
-      return res.json({ success: true });
+      res.json({ success: true });
     });
   } else {
     loginLimiter.set(ip, attempts + 1);
-    return res.json({ success: false });
+    res.json({ success: false });
   }
 });
 
@@ -161,12 +158,10 @@ app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* LOGOUT (FIXED) */
+/* LOGOUT */
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie("secure.sid", {
-      path: "/"
-    });
+    res.clearCookie("secure.sid", { path: "/" });
     res.json({ success: true });
   });
 });
@@ -188,12 +183,12 @@ app.post("/send", requireAuth, async (req, res) => {
       ...new Set(
         recipients
           .split(/[\n,]+/)
-          .map(r => r.trim())
-          .filter(r => emailRegex.test(r))
+          .map(e => e.trim())
+          .filter(e => emailRegex.test(e))
       )
     ];
 
-    if (!list.length)
+    if (!list.length || list.length > 28)
       return res.json({ success: false });
 
     if (!checkDailyLimit(email, list.length))
@@ -201,6 +196,9 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 50,
       auth: {
         user: email,
         pass: password
@@ -218,27 +216,34 @@ app.post("/send", requireAuth, async (req, res) => {
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      const results = await Promise.allSettled(
-        batch.map(to =>
-          transporter.sendMail({
+      for (const to of batch) {
+        try {
+          await transporter.sendMail({
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText
-          })
-        )
-      );
+            text: finalText,
+            headers: {
+              "X-Mailer": "NodeMailer",
+              "X-Priority": "3"
+            }
+          });
 
-      results.forEach(r => {
-        if (r.status === "fulfilled") sent++;
-      });
+          sent++;
 
-      await delay(BATCH_DELAY);
+          // human-like delay (random)
+          const randomDelay = BASE_DELAY + Math.floor(Math.random() * 300);
+          await delay(randomDelay);
+
+        } catch {
+          continue;
+        }
+      }
     }
 
     return res.json({
       success: true,
-      message: `Send ${sent}`
+      message: `Sent ${sent}`
     });
 
   } catch {
@@ -249,5 +254,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🔥 Secure Server running on port " + PORT);
+  console.log("🚀 Pro Mailer running on port " + PORT);
 });
