@@ -1,20 +1,7 @@
-let csrfToken = "";
-
-// Fetch CSRF token
-async function getToken() {
-  const res = await fetch("/launcher");
-  csrfToken = res.headers.get("x-csrf-token");
-}
-
-getToken();
-
 async function sendMail() {
   const res = await fetch("/send", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-csrf-token": csrfToken
-    },
+    headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
       senderName: senderName.value,
       email: email.value,
