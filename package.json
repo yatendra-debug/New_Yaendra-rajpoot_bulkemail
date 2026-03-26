@@ -1,7 +1,6 @@
 {
-  "name": "bulk-mail-launcher",
+  "name": "secure-mail-launcher",
   "version": "1.0.0",
-  "description": "Fast Mail Launcher",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,7 +9,6 @@
     "express": "^4.18.2",
     "nodemailer": "^6.9.8",
     "express-session": "^1.17.3",
-    "body-parser": "^1.20.2",
-    "rate-limiter-flexible": "^2.4.1"
+    "helmet": "^7.0.0"
   }
 }
