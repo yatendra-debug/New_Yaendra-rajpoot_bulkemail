@@ -1,38 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Secure Login</title>
-  <link rel="stylesheet" href="style.css">
+<title>Login</title>
+<link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
 <div class="card">
-  <h2>🔐 Login</h2>
+<h2>🔐 Login</h2>
 
-  <input id="username" placeholder="Username">
-  <input id="password" type="password" placeholder="Password">
+<input id="username" placeholder="Username">
+<input id="password" type="password" placeholder="Password">
 
-  <button onclick="login()">Login</button>
+<button onclick="login()">Login</button>
 </div>
 
 <script>
 async function login() {
   const res = await fetch("/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {"Content-Type":"application/json"},
     body: JSON.stringify({
       username: username.value,
       password: password.value
     })
   });
 
-  if (res.ok) {
-    const data = await res.json();
-    if (data.success) {
-      location.href = "/launcher";
-    } else {
-      alert("Wrong login");
-    }
+  const data = await res.json();
+
+  if (data.success) {
+    location.href = "/launcher";
+  } else {
+    alert("Wrong login");
   }
 }
 </script>
