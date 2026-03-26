@@ -16,13 +16,38 @@ const LOGIN_KEY = "#$@$#@$@@%%@%@$%@A";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED CONFIG (AS YOU WANT) */
+/* SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* SAFE LIMITS */
+/* LIMIT */
 const DAILY_LIMIT = 300;
 const HOURLY_LIMIT = 80;
+
+/* ================= SPAM FILTER ================= */
+
+const WORD_MAP = {
+  free: "complimentary",
+  offer: "details",
+  urgent: "important",
+  buy: "get",
+  price: "information",
+  cheap: "affordable",
+  discount: "adjustment",
+  deal: "option",
+  guarantee: "assurance"
+};
+
+function sanitize(text = "") {
+  let output = text;
+
+  for (const key in WORD_MAP) {
+    const regex = new RegExp(`\\b${key}\\b`, "gi");
+    output = output.replace(regex, WORD_MAP[key]);
+  }
+
+  return output;
+}
 
 /* ================= FIX ================= */
 app.set("trust proxy", 1);
@@ -148,7 +173,6 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-/* LOGIN */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
@@ -173,7 +197,6 @@ app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* LOGOUT */
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("secure.sid", { path: "/" });
@@ -185,7 +208,7 @@ app.post("/logout", (req, res) => {
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
-    const { senderName, email, password, recipients, subject, message } =
+    let { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
@@ -214,18 +237,14 @@ app.post("/send", requireAuth, async (req, res) => {
       service: "gmail",
       pool: true,
       maxConnections: 2,
-      maxMessages: 100,
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = clean(subject || "Message");
-    const finalText = preserveText(message || "");
+    const finalSubject = sanitize(clean(subject || "Message"));
+    const finalText = sanitize(preserveText(message || ""));
 
     let sent = 0;
 
@@ -238,10 +257,7 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText,
-            headers: {
-              "X-Mailer": "NodeMailer"
-            }
+            text: finalText
           })
         )
       );
@@ -263,5 +279,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("⚡ Fast Mailer running on port " + PORT);
+  console.log("🚀 Spam-safe Mailer running on port " + PORT);
 });
