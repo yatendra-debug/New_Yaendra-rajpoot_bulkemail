@@ -14,13 +14,13 @@ const PORT = 8080;
 const LOGIN_KEY = "^%%^&^&%$$#$$%#";
 
 const SESSION_SECRET = crypto.randomBytes(64).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000;
+const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BATCH_DELAY = 300; // ms
 
-const DAILY_LIMIT = 300;
-const HOURLY_LIMIT = 60;
+const DAILY_LIMIT = 350;
+const HOURLY_LIMIT = 70;
 
 /* ================= BASIC ================= */
 
@@ -36,7 +36,7 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    rolling: true, // activity pe session refresh
+    rolling: true,
     cookie: {
       httpOnly: true,
       sameSite: "strict",
@@ -45,13 +45,12 @@ app.use(
   })
 );
 
-/* ================= SECURITY ================= */
+/* ================= SECURITY HEADERS ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
 
@@ -69,7 +68,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 100) {
+  if (rec.count > 120) {
     return res.status(429).send("Too many requests");
   }
 
@@ -80,6 +79,7 @@ app.use((req, res, next) => {
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function cleanHeader(str = "", max = 120) {
@@ -98,6 +98,7 @@ const hourlyMap = new Map();
 function checkLimits(sender, count) {
   const now = Date.now();
 
+  // Daily reset
   const d = dailyMap.get(sender);
   if (!d || now - d.start > 86400000) {
     dailyMap.set(sender, { count: 0, start: now });
@@ -106,6 +107,7 @@ function checkLimits(sender, count) {
   const dNow = dailyMap.get(sender);
   if (dNow.count + count > DAILY_LIMIT) return "daily";
 
+  // Hourly reset
   const h = hourlyMap.get(sender);
   if (!h || now - h.start > 3600000) {
     hourlyMap.set(sender, { count: 0, start: now });
@@ -142,36 +144,35 @@ app.post("/login", (req, res) => {
   return res.json({ success: false });
 });
 
-/* ✅ FAST LOGOUT (double click friendly) */
-app.post("/logout", (req, res) => {
-  if (!req.session) {
-    return res.json({ success: true });
-  }
+app.get("/launcher", requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, "public/launcher.html"));
+});
 
-  req.session.destroy(err => {
+app.post("/logout", (req, res) => {
+  if (!req.session) return res.json({ success: true });
+
+  req.session.destroy(() => {
     res.clearCookie("secure.sid");
     return res.json({ success: true });
   });
 });
 
-app.get("/launcher", requireAuth, (req, res) => {
-  res.sendFile(path.join(__dirname, "public/launcher.html"));
-});
-
-/* ================= SEND ================= */
+/* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
-    if (!email || !password || !recipients)
-      return res.json({ success: false });
+    if (!email || !password || !recipients) {
+      return res.json({ success: false, message: "Missing fields" });
+    }
 
-    if (!emailRegex.test(email))
-      return res.json({ success: false });
+    if (!emailRegex.test(email)) {
+      return res.json({ success: false, message: "Invalid sender email" });
+    }
 
-    const list = [
+    const recipientList = [
       ...new Set(
         recipients
           .split(/[\n,]+/)
@@ -180,12 +181,19 @@ app.post("/send", requireAuth, async (req, res) => {
       )
     ];
 
-    if (!list.length)
-      return res.json({ success: false });
+    if (!recipientList.length) {
+      return res.json({ success: false, message: "No valid recipients" });
+    }
 
-    const limit = checkLimits(email, list.length);
-    if (limit !== true)
-      return res.json({ success: false, message: "Limit reached" });
+    const limit = checkLimits(email, recipientList.length);
+
+    if (limit === "daily") {
+      return res.json({ success: false, message: "Daily limit reached" });
+    }
+
+    if (limit === "hourly") {
+      return res.json({ success: false, message: "Hourly limit reached" });
+    }
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -194,14 +202,14 @@ app.post("/send", requireAuth, async (req, res) => {
 
     await transporter.verify();
 
-    const finalName = cleanHeader(senderName || email);
-    const finalSubject = cleanHeader(subject || "Message");
-    const finalText = preserveText(message || "");
+    const finalName = cleanHeader(senderName || email, 80);
+    const finalSubject = cleanHeader(subject || "Message", 150);
+    const finalText = preserveText(message || "", 20000);
 
     let sent = 0;
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < recipientList.length; i += BATCH_SIZE) {
+      const batch = recipientList.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.allSettled(
         batch.map(to =>
@@ -221,15 +229,21 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(BATCH_DELAY);
     }
 
-    res.json({ success: true, message: `Send ${sent}` });
+    return res.json({
+      success: true,
+      message: `Send ${sent}`
+    });
 
-  } catch {
-    res.json({ success: false });
+  } catch (err) {
+    return res.json({
+      success: false,
+      message: "Sending failed"
+    });
   }
 });
 
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Mail server running on port " + PORT);
 });
