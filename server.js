@@ -11,18 +11,19 @@ const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "#$@$#@$@@%%@%@$%@A";
+const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED (AS REQUESTED) */
+/* SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
 /* LIMITS */
 const DAILY_LIMIT = 300;
 const HOURLY_LIMIT = 80;
+const PER_EMAIL_LIMIT = 28;
 
 /* ================= BASIC ================= */
 
@@ -71,7 +72,6 @@ setInterval(() => {
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
-
   const rec = ipLimiter.get(ip) || { count: 0, time: now };
 
   if (now - rec.time > 60000) {
@@ -83,7 +83,6 @@ app.use((req, res, next) => {
 
   rec.count++;
   ipLimiter.set(ip, rec);
-
   next();
 });
 
@@ -97,36 +96,64 @@ function clean(str = "", max = 120) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function normalizeText(str = "", max = 20000) {
+function normalize(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").slice(0, max);
+}
+
+/* ================= SPAM CLEAN ================= */
+
+const WORD_MAP = {
+  free: "complimentary",
+  offer: "details",
+  urgent: "important",
+  buy: "get",
+  cheap: "affordable",
+  discount: "adjustment"
+};
+
+function sanitize(text = "") {
+  let out = text;
+  for (const k in WORD_MAP) {
+    out = out.replace(new RegExp(`\\b${k}\\b`, "gi"), WORD_MAP[k]);
+  }
+  return out;
 }
 
 /* ================= LIMIT ================= */
 
 const dailyMap = new Map();
 const hourlyMap = new Map();
+const perEmailMap = new Map();
 
 function checkLimits(sender, count) {
   const now = Date.now();
 
+  /* DAILY */
   const d = dailyMap.get(sender) || { count: 0, start: now };
   if (now - d.start > 86400000) {
     d.count = 0;
     d.start = now;
   }
 
+  /* HOURLY */
   const h = hourlyMap.get(sender) || { count: 0, start: now };
   if (now - h.start > 3600000) {
     h.count = 0;
     h.start = now;
   }
 
+  /* PER EMAIL */
+  const p = perEmailMap.get(sender) || { count: 0 };
+
+  if (p.count + count > PER_EMAIL_LIMIT) return "per_email_limit";
   if (d.count + count > DAILY_LIMIT) return "daily_limit";
   if (h.count + count > HOURLY_LIMIT) return "hourly_limit";
 
+  p.count += count;
   d.count += count;
   h.count += count;
 
+  perEmailMap.set(sender, p);
   dailyMap.set(sender, d);
   hourlyMap.set(sender, h);
 
@@ -173,7 +200,7 @@ app.get("/launcher", requireAuth, (req, res) => {
 
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie("secure.sid", { path: "/" });
+    res.clearCookie("secure.sid");
     res.json({ success: true });
   });
 });
@@ -182,7 +209,7 @@ app.post("/logout", (req, res) => {
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
-    const { senderName, email, password, recipients, subject, message } =
+    let { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
@@ -211,17 +238,14 @@ app.post("/send", requireAuth, async (req, res) => {
       service: "gmail",
       pool: true,
       maxConnections: 2,
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = clean(subject || "Message");
-    const finalText = normalizeText(message || "");
+    const finalSubject = sanitize(clean(subject || "Message"));
+    const finalText = sanitize(normalize(message || ""));
 
     let sent = 0;
 
@@ -234,10 +258,7 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText,
-            headers: {
-              "X-Mailer": "NodeMailer"
-            }
+            text: finalText
           })
         )
       );
@@ -259,5 +280,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("🚀 Mailer running on port " + PORT);
 });
