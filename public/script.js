@@ -2,6 +2,7 @@ async function sendMail() {
   const res = await fetch("/send", {
     method: "POST",
     headers: {"Content-Type":"application/json"},
+    credentials: "include",
     body: JSON.stringify({
       senderName: senderName.value,
       email: email.value,
@@ -22,6 +23,9 @@ async function sendMail() {
 }
 
 async function logout() {
-  await fetch("/logout", { method: "POST" });
+  await fetch("/logout", {
+    method: "POST",
+    credentials: "include"
+  });
   location.href = "/";
 }
