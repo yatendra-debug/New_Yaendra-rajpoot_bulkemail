@@ -16,44 +16,17 @@ const LOGIN_KEY = "#$@$#@$@@%%@%@$%@A";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED */
+/* SPEED (AS REQUESTED) */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* LIMIT */
+/* LIMITS */
 const DAILY_LIMIT = 300;
 const HOURLY_LIMIT = 80;
 
-/* ================= SPAM FILTER ================= */
-
-const WORD_MAP = {
-  free: "complimentary",
-  offer: "details",
-  urgent: "important",
-  buy: "get",
-  price: "information",
-  cheap: "affordable",
-  discount: "adjustment",
-  deal: "option",
-  guarantee: "assurance"
-};
-
-function sanitize(text = "") {
-  let output = text;
-
-  for (const key in WORD_MAP) {
-    const regex = new RegExp(`\\b${key}\\b`, "gi");
-    output = output.replace(regex, WORD_MAP[key]);
-  }
-
-  return output;
-}
-
-/* ================= FIX ================= */
-app.set("trust proxy", 1);
-
 /* ================= BASIC ================= */
 
+app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
 app.use(express.json({ limit: "20kb" }));
@@ -124,7 +97,7 @@ function clean(str = "", max = 120) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function preserveText(str = "", max = 20000) {
+function normalizeText(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").slice(0, max);
 }
 
@@ -148,8 +121,8 @@ function checkLimits(sender, count) {
     h.start = now;
   }
 
-  if (d.count + count > DAILY_LIMIT) return "daily";
-  if (h.count + count > HOURLY_LIMIT) return "hourly";
+  if (d.count + count > DAILY_LIMIT) return "daily_limit";
+  if (h.count + count > HOURLY_LIMIT) return "hourly_limit";
 
   d.count += count;
   h.count += count;
@@ -177,7 +150,8 @@ app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
 
-  if (attempts > 5) return res.status(429).json({ success: false });
+  if (attempts > 5)
+    return res.status(429).json({ success: false });
 
   const { username, password } = req.body || {};
 
@@ -208,7 +182,7 @@ app.post("/logout", (req, res) => {
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
-    let { senderName, email, password, recipients, subject, message } =
+    const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
@@ -237,14 +211,17 @@ app.post("/send", requireAuth, async (req, res) => {
       service: "gmail",
       pool: true,
       maxConnections: 2,
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = sanitize(clean(subject || "Message"));
-    const finalText = sanitize(preserveText(message || ""));
+    const finalSubject = clean(subject || "Message");
+    const finalText = normalizeText(message || "");
 
     let sent = 0;
 
@@ -257,7 +234,10 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText
+            text: finalText,
+            headers: {
+              "X-Mailer": "NodeMailer"
+            }
           })
         )
       );
@@ -269,9 +249,9 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(BATCH_DELAY);
     }
 
-    res.json({ success: true, message: "Sent " + sent });
+    res.json({ success: true, message: `Sent ${sent}` });
 
-  } catch {
+  } catch (err) {
     res.json({ success: false });
   }
 });
@@ -279,5 +259,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Spam-safe Mailer running on port " + PORT);
+  console.log("Server running on port " + PORT);
 });
