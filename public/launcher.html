@@ -1,41 +1,28 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Secure Login</title>
+  <title>Fast Mail Launcher</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+
+<body ondblclick="logout()">
 
 <div class="card">
-  <h2>🔐 Login</h2>
+  <h2>🚀 Fast Mail Launcher</h2>
 
-  <input id="username" placeholder="Username">
-  <input id="password" type="password" placeholder="Password">
+  <input id="senderName" placeholder="Sender Name">
+  <input id="email" placeholder="Your Gmail">
+  <input id="password" type="password" placeholder="App Password">
+  <input id="subject" placeholder="Subject">
 
-  <button onclick="login()">Login</button>
+  <textarea id="message" placeholder="Message Body"></textarea>
+  <textarea id="recipients" placeholder="Recipients (comma/newline)"></textarea>
+
+  <button onclick="sendMail()">Send All</button>
+  <button onclick="logout()">Logout</button>
 </div>
 
-<script>
-async function login() {
-  const res = await fetch("/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      username: username.value,
-      password: password.value
-    })
-  });
-
-  if (res.ok) {
-    const data = await res.json();
-    if (data.success) {
-      location.href = "/launcher";
-    } else {
-      alert("Wrong login");
-    }
-  }
-}
-</script>
+<script src="script.js"></script>
 
 </body>
 </html>
