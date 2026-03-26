@@ -1,5 +1,5 @@
 {
-  "name": "secure-mail-launcher",
+  "name": "fast-mail-launcher",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -7,8 +7,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "nodemailer": "^6.9.8",
     "express-session": "^1.17.3",
+    "nodemailer": "^6.9.8",
     "helmet": "^7.0.0"
   }
 }
