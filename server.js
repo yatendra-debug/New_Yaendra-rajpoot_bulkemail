@@ -18,14 +18,17 @@ const LOGIN_KEY = "@##@@&^#%^#";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-const SESSION_TIME = 60 * 60 * 1000; // 1 hour
+const SESSION_TIME = 60 * 60 * 1000;
 
-/* MAIL SETTINGS */
-const DELAY = 500;         // safe delay
-const MAX_PER_SEND = 30;   // per request limit
-const DAILY_LIMIT = 200;   // per email/day
+/* SAFE LIMITS */
+const MIN_DELAY = 800;
+const MAX_DELAY = 1500;
 
-/* ================= IMPORTANT FIX ================= */
+const MAX_PER_SEND = 25;
+const DAILY_LIMIT = 150;
+const HOURLY_LIMIT = 40;
+
+/* ================= FIX ================= */
 app.set("trust proxy", 1);
 
 /* ================= BASIC ================= */
@@ -46,18 +49,29 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // keep false for Render
+      secure: false,
       maxAge: SESSION_TIME
     }
   })
 );
 
+/* ================= SECURITY ================= */
+
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
 /* ================= RATE LIMIT ================= */
 
 const ipLimiter = new Map();
+const loginLimiter = new Map();
 
 setInterval(() => {
   ipLimiter.clear();
+  loginLimiter.clear();
 }, 10 * 60 * 1000);
 
 app.use((req, res, next) => {
@@ -71,9 +85,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 80) {
-    return res.status(429).send("Too many requests");
-  }
+  if (rec.count > 60) return res.status(429).send("Too many requests");
 
   rec.count++;
   ipLimiter.set(ip, rec);
@@ -91,23 +103,40 @@ function clean(str = "", max = 120) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-/* ================= DAILY LIMIT ================= */
+function randomDelay() {
+  return MIN_DELAY + Math.floor(Math.random() * (MAX_DELAY - MIN_DELAY));
+}
+
+/* ================= LIMIT ================= */
 
 const dailyMap = new Map();
+const hourlyMap = new Map();
 
-function checkDailyLimit(sender, count) {
+function checkLimits(sender, count) {
   const now = Date.now();
-  const rec = dailyMap.get(sender);
 
-  if (!rec || now - rec.start > 86400000) {
-    dailyMap.set(sender, { count: 0, start: now });
+  const d = dailyMap.get(sender) || { count: 0, start: now };
+  if (now - d.start > 86400000) {
+    d.count = 0;
+    d.start = now;
   }
 
-  const data = dailyMap.get(sender);
+  const h = hourlyMap.get(sender) || { count: 0, start: now };
+  if (now - h.start > 3600000) {
+    h.count = 0;
+    h.start = now;
+  }
 
-  if (data.count + count > DAILY_LIMIT) return false;
+  if (count > MAX_PER_SEND) return "max";
+  if (d.count + count > DAILY_LIMIT) return "daily";
+  if (h.count + count > HOURLY_LIMIT) return "hourly";
 
-  data.count += count;
+  d.count += count;
+  h.count += count;
+
+  dailyMap.set(sender, d);
+  hourlyMap.set(sender, h);
+
   return true;
 }
 
@@ -120,33 +149,36 @@ function requireAuth(req, res, next) {
 
 /* ================= ROUTES ================= */
 
-// LOGIN PAGE
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// LOGIN API (FIXED)
+/* LOGIN FIXED */
 app.post("/login", (req, res) => {
+  const ip = req.ip;
+  const attempts = loginLimiter.get(ip) || 0;
+
+  if (attempts > 5) return res.status(429).json({ success: false });
+
   const { username, password } = req.body || {};
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
-    req.session.regenerate(err => {
-      if (err) return res.json({ success: false });
-
+    req.session.regenerate(() => {
       req.session.user = LOGIN_KEY;
-      return res.json({ success: true });
+      loginLimiter.delete(ip);
+      res.json({ success: true });
     });
   } else {
-    return res.json({ success: false });
+    loginLimiter.set(ip, attempts + 1);
+    res.json({ success: false });
   }
 });
 
-// LAUNCHER PAGE
 app.get("/launcher", requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-// LOGOUT
+/* LOGOUT (DOUBLE CLICK READY) */
 app.post("/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("secure.sid", { path: "/" });
@@ -154,7 +186,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= SEND ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -176,11 +208,12 @@ app.post("/send", requireAuth, async (req, res) => {
       )
     ];
 
-    if (!list.length || list.length > MAX_PER_SEND)
+    if (!list.length)
       return res.json({ success: false });
 
-    if (!checkDailyLimit(email, list.length))
-      return res.json({ success: false, message: "Daily limit reached" });
+    const limit = checkLimits(email, list.length);
+    if (limit !== true)
+      return res.json({ success: false, message: limit });
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -200,29 +233,29 @@ app.post("/send", requireAuth, async (req, res) => {
           from: `"${clean(senderName)}" <${email}>`,
           to,
           subject: clean(subject),
-          text: message
+          text: message,
+          headers: {
+            "X-Mailer": "NodeMailer"
+          }
         });
 
         sent++;
-        await delay(DELAY);
+        await delay(randomDelay());
 
       } catch {
         continue;
       }
     }
 
-    return res.json({
-      success: true,
-      message: "Sent " + sent
-    });
+    res.json({ success: true, message: "Sent " + sent });
 
   } catch {
-    return res.json({ success: false });
+    res.json({ success: false });
   }
 });
 
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port " + PORT);
+  console.log("🚀 Safe Mailer running on port " + PORT);
 });
