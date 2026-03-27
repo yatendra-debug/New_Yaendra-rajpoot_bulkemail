@@ -16,14 +16,11 @@ const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* LIMITS */
-const DAILY_LIMIT = 300;
+const DAILY_LIMIT = 400;
 const HOURLY_LIMIT = 80;
-const PER_EMAIL_LIMIT = 28;
 
 /* ================= BASIC ================= */
 
@@ -33,6 +30,8 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
+
+/* ================= SESSION ================= */
 
 app.use(
   session({
@@ -50,12 +49,13 @@ app.use(
   })
 );
 
-/* ================= SECURITY ================= */
+/* ================= SECURITY HEADERS ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
 
@@ -83,6 +83,7 @@ app.use((req, res, next) => {
 
   rec.count++;
   ipLimiter.set(ip, rec);
+
   next();
 });
 
@@ -100,60 +101,32 @@ function normalize(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").slice(0, max);
 }
 
-/* ================= SPAM CLEAN ================= */
-
-const WORD_MAP = {
-  free: "complimentary",
-  offer: "details",
-  urgent: "important",
-  buy: "get",
-  cheap: "affordable",
-  discount: "adjustment"
-};
-
-function sanitize(text = "") {
-  let out = text;
-  for (const k in WORD_MAP) {
-    out = out.replace(new RegExp(`\\b${k}\\b`, "gi"), WORD_MAP[k]);
-  }
-  return out;
-}
-
 /* ================= LIMIT ================= */
 
 const dailyMap = new Map();
 const hourlyMap = new Map();
-const perEmailMap = new Map();
 
 function checkLimits(sender, count) {
   const now = Date.now();
 
-  /* DAILY */
   const d = dailyMap.get(sender) || { count: 0, start: now };
   if (now - d.start > 86400000) {
     d.count = 0;
     d.start = now;
   }
 
-  /* HOURLY */
   const h = hourlyMap.get(sender) || { count: 0, start: now };
   if (now - h.start > 3600000) {
     h.count = 0;
     h.start = now;
   }
 
-  /* PER EMAIL */
-  const p = perEmailMap.get(sender) || { count: 0 };
-
-  if (p.count + count > PER_EMAIL_LIMIT) return "per_email_limit";
   if (d.count + count > DAILY_LIMIT) return "daily_limit";
   if (h.count + count > HOURLY_LIMIT) return "hourly_limit";
 
-  p.count += count;
   d.count += count;
   h.count += count;
 
-  perEmailMap.set(sender, p);
   dailyMap.set(sender, d);
   hourlyMap.set(sender, h);
 
@@ -173,6 +146,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
+/* LOGIN FIXED */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
@@ -205,7 +179,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND ================= */
+/* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -238,14 +212,17 @@ app.post("/send", requireAuth, async (req, res) => {
       service: "gmail",
       pool: true,
       maxConnections: 2,
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = sanitize(clean(subject || "Message"));
-    const finalText = sanitize(normalize(message || ""));
+    const finalSubject = clean(subject || "Message");
+    const finalText = normalize(message || "");
 
     let sent = 0;
 
@@ -280,5 +257,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Mailer running on port " + PORT);
+  console.log("🚀 Server running on port " + PORT);
 });
