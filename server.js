@@ -98,7 +98,8 @@ function normalize(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").slice(0, max);
 }
 
-/* ================= SMART SPAM FILTER ================= */
+/* ================= SMART WORD FILTER ================= */
+/* NOTE: Greeting untouched + subject untouched */
 
 const WORD_MAP = {
   "first page": "top results",
@@ -115,13 +116,9 @@ const WORD_MAP = {
   quote: "estimate"
 };
 
-function sanitize(text = "") {
+function smartReplace(text = "") {
   let output = text;
 
-  // remove greetings
-  output = output.replace(/\b(hello|hi|hey)\b/gi, "");
-
-  // replace words
   for (const key in WORD_MAP) {
     const regex = new RegExp(`\\b${key}\\b`, "gi");
     output = output.replace(regex, WORD_MAP[key]);
@@ -249,8 +246,10 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = sanitize(clean(subject || "Message"));
-    const finalText = sanitize(normalize(message || ""));
+
+    /* IMPORTANT FIX */
+    const finalSubject = clean(subject || "Message"); // untouched
+    const finalText = smartReplace(normalize(message || "")); // only body filtered
 
     let sent = 0;
 
@@ -285,5 +284,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Smart Safe Mailer running on port " + PORT);
+  console.log("🚀 Final Clean Smart Server running on port " + PORT);
 });
