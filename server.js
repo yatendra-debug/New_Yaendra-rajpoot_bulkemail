@@ -51,7 +51,7 @@ app.use(
   })
 );
 
-/* ================= SECURITY ================= */
+/* ================= SECURITY HEADERS ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
@@ -147,6 +147,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
+/* LOGIN FIXED */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
@@ -222,11 +223,7 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const finalName = clean(senderName || email);
     const finalSubject = clean(subject || "Message");
-
-    /* ===== FOOTER AUTO ADD ===== */
-    let finalText =
-      normalize(message || "") +
-      "\n\nscanne and secure — www.avast.com";
+    const finalText = normalize(message || "");
 
     let sent = 0;
 
@@ -261,5 +258,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port " + PORT);
+  console.log("🚀 Ultra Safe Server running on port " + PORT);
 });
