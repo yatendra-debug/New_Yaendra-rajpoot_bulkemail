@@ -16,9 +16,11 @@ const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
+/* SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
+/* LIMIT */
 const DAILY_LIMIT = 400;
 const HOURLY_LIMIT = 80;
 
@@ -31,6 +33,8 @@ app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
+/* ================= SESSION ================= */
+
 app.use(
   session({
     name: "secure.sid",
@@ -41,7 +45,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false,
+      secure: false, // true only with HTTPS
       maxAge: SESSION_TIME
     }
   })
@@ -96,35 +100,6 @@ function clean(str = "", max = 120) {
 
 function normalize(str = "", max = 20000) {
   return str.replace(/\r\n/g, "\n").slice(0, max);
-}
-
-/* ================= SMART WORD FILTER ================= */
-/* NOTE: Greeting untouched + subject untouched */
-
-const WORD_MAP = {
-  "first page": "top results",
-  rank: "position",
-  site: "platform",
-  webpage: "web section",
-  page: "section",
-  report: "summary",
-  info: "details",
-  more: "additional",
-  information: "details",
-  price: "cost",
-  proposal: "plan",
-  quote: "estimate"
-};
-
-function smartReplace(text = "") {
-  let output = text;
-
-  for (const key in WORD_MAP) {
-    const regex = new RegExp(`\\b${key}\\b`, "gi");
-    output = output.replace(regex, WORD_MAP[key]);
-  }
-
-  return output;
 }
 
 /* ================= LIMIT ================= */
@@ -204,7 +179,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND ================= */
+/* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
@@ -246,10 +221,8 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-
-    /* IMPORTANT FIX */
     const finalSubject = clean(subject || "Message"); // untouched
-    const finalText = smartReplace(normalize(message || "")); // only body filtered
+    const finalText = normalize(message || ""); // untouched
 
     let sent = 0;
 
@@ -284,5 +257,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Final Clean Smart Server running on port " + PORT);
+  console.log("🚀 Clean Safe Server running on port " + PORT);
 });
