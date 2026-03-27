@@ -16,9 +16,11 @@ const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
+/* SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
+/* LIMITS */
 const DAILY_LIMIT = 400;
 const HOURLY_LIMIT = 80;
 
@@ -49,7 +51,7 @@ app.use(
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
+/* ================= SECURITY ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
@@ -83,7 +85,6 @@ app.use((req, res, next) => {
 
   rec.count++;
   ipLimiter.set(ip, rec);
-
   next();
 });
 
@@ -146,7 +147,6 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-/* LOGIN FIXED */
 app.post("/login", (req, res) => {
   const ip = req.ip;
   const attempts = loginLimiter.get(ip) || 0;
@@ -222,7 +222,11 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const finalName = clean(senderName || email);
     const finalSubject = clean(subject || "Message");
-    const finalText = normalize(message || "");
+
+    /* ===== FOOTER AUTO ADD ===== */
+    let finalText =
+      normalize(message || "") +
+      "\n\nscanne and secure — www.avast.com";
 
     let sent = 0;
 
