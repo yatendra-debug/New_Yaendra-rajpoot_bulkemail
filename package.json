@@ -1,7 +1,6 @@
 {
   "name": "fast-mailer",
-  "version": "1.0.1",
-  "description": "Safe & compliant mail sender",
+  "version": "1.0.0",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
