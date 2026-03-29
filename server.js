@@ -11,7 +11,7 @@ const PORT = 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "#$@$#@$@@%%@%@$%@A";
+const LOGIN_KEY = "YY";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000; // 1 hour
