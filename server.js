@@ -20,8 +20,8 @@ const SESSION_TIME = 60 * 60 * 1000;
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* LIMIT */
-const DAILY_LIMIT = 400;
+/* LIMITS */
+const DAILY_LIMIT = 300;
 const HOURLY_LIMIT = 80;
 
 /* ================= BASIC ================= */
@@ -45,7 +45,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // true only with HTTPS
+      secure: false, // HTTPS pe true kar dena
       maxAge: SESSION_TIME
     }
   })
@@ -74,6 +74,7 @@ setInterval(() => {
 app.use((req, res, next) => {
   const ip = req.ip;
   const now = Date.now();
+
   const rec = ipLimiter.get(ip) || { count: 0, time: now };
 
   if (now - rec.time > 60000) {
@@ -179,11 +180,11 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= SEND ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   try {
-    let { senderName, email, password, recipients, subject, message } =
+    const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
@@ -221,8 +222,8 @@ app.post("/send", requireAuth, async (req, res) => {
     await transporter.verify();
 
     const finalName = clean(senderName || email);
-    const finalSubject = clean(subject || "Message"); // untouched
-    const finalText = normalize(message || ""); // untouched
+    const finalSubject = clean(subject || "Message");
+    const finalText = normalize(message || "");
 
     let sent = 0;
 
@@ -257,5 +258,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Clean Safe Server running on port " + PORT);
+  console.log("🚀 Production Mail Server running on port " + PORT);
 });
