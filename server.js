@@ -16,11 +16,11 @@ const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED (UNCHANGED) */
+/* SAME SPEED */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* LIMITS (UNCHANGED) */
+/* SAME LIMITS */
 const DAILY_LIMIT = 120;
 const HOURLY_LIMIT = 40;
 
@@ -169,12 +169,8 @@ app.post("/send", requireAuth, async (req, res) => {
     if (limit !== true)
       return res.json({ success: false, message: limit });
 
-    /* SAFE TRANSPORTER */
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      pool: true,
-      maxConnections: 1,
-      maxMessages: 50,
       auth: {
         user: email,
         pass: password
@@ -198,19 +194,12 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-
-            /* TEXT + HTML */
             text: finalText,
-            html: `<div style="font-family:sans-serif;line-height:1.6">
-                     ${finalText.replace(/\n/g, "<br>")}
-                   </div>`,
-
-            /* CLEAN HEADERS */
-            messageId: `<${crypto.randomBytes(16).toString("hex")}@${email.split("@")[1]}>`,
-            date: new Date(),
+            html: `<p>${finalText.replace(/\n/g, "<br>")}</p>`,
 
             headers: {
-              "X-Mailer": "NodeMailer"
+              "X-Mailer": "NodeMailer",
+              "List-Unsubscribe": "<mailto:unsubscribe@" + email.split("@")[1] + ">"
             }
           })
         )
@@ -225,7 +214,7 @@ app.post("/send", requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Sent ${sent}` });
 
-  } catch (err) {
+  } catch {
     res.json({ success: false });
   }
 });
