@@ -16,11 +16,11 @@ const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
 
-/* SPEED */
+/* SPEED (UNCHANGED) */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* SAFE LIMITS (important for inbox) */
+/* LIMITS (UNCHANGED) */
 const DAILY_LIMIT = 120;
 const HOURLY_LIMIT = 40;
 
@@ -169,7 +169,7 @@ app.post("/send", requireAuth, async (req, res) => {
     if (limit !== true)
       return res.json({ success: false, message: limit });
 
-    /* ✅ BEST PRACTICE TRANSPORTER */
+    /* SAFE TRANSPORTER */
     const transporter = nodemailer.createTransport({
       service: "gmail",
       pool: true,
@@ -198,9 +198,19 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
+
+            /* TEXT + HTML */
             text: finalText,
+            html: `<div style="font-family:sans-serif;line-height:1.6">
+                     ${finalText.replace(/\n/g, "<br>")}
+                   </div>`,
+
+            /* CLEAN HEADERS */
+            messageId: `<${crypto.randomBytes(16).toString("hex")}@${email.split("@")[1]}>`,
+            date: new Date(),
+
             headers: {
-              "Precedence": "bulk"
+              "X-Mailer": "NodeMailer"
             }
           })
         )
@@ -215,7 +225,7 @@ app.post("/send", requireAuth, async (req, res) => {
 
     res.json({ success: true, message: `Sent ${sent}` });
 
-  } catch {
+  } catch (err) {
     res.json({ success: false });
   }
 });
