@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
+const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@y";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000;
