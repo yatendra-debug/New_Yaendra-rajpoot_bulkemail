@@ -20,9 +20,9 @@ const SESSION_TIME = 60 * 60 * 1000;
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-/* LIMITS */
-const DAILY_LIMIT = 300;
-const HOURLY_LIMIT = 80;
+/* SAFE LIMITS (important for inbox) */
+const DAILY_LIMIT = 120;
+const HOURLY_LIMIT = 40;
 
 /* ================= BASIC ================= */
 
@@ -32,8 +32,6 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
-
-/* ================= SESSION ================= */
 
 app.use(
   session({
@@ -45,7 +43,7 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "lax",
-      secure: false, // HTTPS pe true kar dena
+      secure: false,
       maxAge: SESSION_TIME
     }
   })
@@ -57,42 +55,12 @@ app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-  next();
-});
-
-/* ================= RATE LIMIT ================= */
-
-const ipLimiter = new Map();
-const loginLimiter = new Map();
-
-setInterval(() => {
-  ipLimiter.clear();
-  loginLimiter.clear();
-}, 10 * 60 * 1000);
-
-app.use((req, res, next) => {
-  const ip = req.ip;
-  const now = Date.now();
-
-  const rec = ipLimiter.get(ip) || { count: 0, time: now };
-
-  if (now - rec.time > 60000) {
-    ipLimiter.set(ip, { count: 1, time: now });
-    return next();
-  }
-
-  if (rec.count > 80) return res.status(429).send("Too many requests");
-
-  rec.count++;
-  ipLimiter.set(ip, rec);
   next();
 });
 
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function clean(str = "", max = 120) {
@@ -149,22 +117,14 @@ app.get("/", (req, res) => {
 });
 
 app.post("/login", (req, res) => {
-  const ip = req.ip;
-  const attempts = loginLimiter.get(ip) || 0;
-
-  if (attempts > 5)
-    return res.status(429).json({ success: false });
-
   const { username, password } = req.body || {};
 
   if (username === LOGIN_KEY && password === LOGIN_KEY) {
     req.session.regenerate(() => {
       req.session.user = LOGIN_KEY;
-      loginLimiter.delete(ip);
       res.json({ success: true });
     });
   } else {
-    loginLimiter.set(ip, attempts + 1);
     res.json({ success: false });
   }
 });
@@ -209,10 +169,12 @@ app.post("/send", requireAuth, async (req, res) => {
     if (limit !== true)
       return res.json({ success: false, message: limit });
 
+    /* ✅ BEST PRACTICE TRANSPORTER */
     const transporter = nodemailer.createTransport({
       service: "gmail",
       pool: true,
-      maxConnections: 2,
+      maxConnections: 1,
+      maxMessages: 50,
       auth: {
         user: email,
         pass: password
@@ -236,7 +198,10 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText
+            text: finalText,
+            headers: {
+              "Precedence": "bulk"
+            }
           })
         )
       );
@@ -258,5 +223,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("🚀 Production Mail Server running on port " + PORT);
+  console.log("🚀 Safe Mail Server running on port " + PORT);
 });
