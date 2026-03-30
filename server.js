@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = process.env.LOGIN_KEY || "##";
+const LOGIN_KEY = process.env.LOGIN_KEY || "#$@$#@$@@%%@%@$%@A";
 const SESSION_SECRET = process.env.SESSION_SECRET || "super_secret_session_key_123";
 const SESSION_TIME = 60 * 60 * 1000; 
 
