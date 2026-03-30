@@ -7,6 +7,8 @@
 
 <div class="box">
 
+  <!-- ❌ TITLE REMOVE (yaha kuch nahi rakha) -->
+
   <div class="row">
     <input id="name" placeholder="Sender Name">
     <input id="email" placeholder="Your Gmail">
@@ -18,12 +20,18 @@
   </div>
 
   <div class="row">
-    <textarea id="message" class="big" placeholder="Message"></textarea>
-    <textarea id="recipients" placeholder="Recipients"></textarea>
+    <textarea id="message" class="big" placeholder="Message Body"></textarea>
+    <textarea id="recipients" placeholder="Recipients (comma or newline)"></textarea>
   </div>
 
-  <button id="sendBtn" onclick="send()">Send All</button>
-  <button ondblclick="logout()">Logout</button>
+  <div class="row">
+    <button id="sendBtn" onclick="send()" style="flex: 3;">Send All</button>
+    <button ondblclick="logout()" style="flex: 1;">Logout</button>
+  </div>
+
+  <p style="text-align:center; font-size:12px; color:gray;">
+    Double-click to logout
+  </p>
 
 </div>
 
