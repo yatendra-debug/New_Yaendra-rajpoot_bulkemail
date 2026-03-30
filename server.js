@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root
+// 👉 root
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// limit system
+// 👉 limit system
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,6 +41,39 @@ function checkLimit(email, total) {
   return true;
 }
 
+// 👉 spam word cleaner
+function cleanMessage(text) {
+  if (!text) return "";
+
+  const replacements = {
+    "report": "details",
+    "quote": "info",
+    "website": "platform",
+    "site": "platform",
+    "page": "section",
+    "search": "find",
+    "result": "update",
+    "not": "",
+    "hi": "hey",
+    "hello": "greetings",
+    "screenshot": "image",
+    "first page": "top section",
+    "rank": "position",
+    "error": "issue",
+    "glitch": "issue"
+  };
+
+  let cleaned = text;
+
+  for (let key in replacements) {
+    const regex = new RegExp(`\\b${key}\\b`, "gi");
+    cleaned = cleaned.replace(regex, replacements[key]);
+  }
+
+  return cleaned;
+}
+
+// 👉 config
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
@@ -87,15 +120,18 @@ app.post("/send", async (req, res) => {
       await Promise.all(
         batch.map(async (toEmail) => {
           try {
+            const cleanText = cleanMessage(message);
+
             await transporter.sendMail({
               from: fromField,
               to: toEmail,
               subject: subject || "",
-              text: message || "",
+              text: cleanText,
               headers: {
                 "X-Mailer": "NodeMailer"
               }
             });
+
             sentCount++;
           } catch (err) {
             console.log(err.message);
@@ -106,7 +142,10 @@ app.post("/send", async (req, res) => {
       await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
-    return res.json({ status: "success", sent: sentCount });
+    return res.json({
+      status: "success",
+      sent: sentCount
+    });
 
   } catch (err) {
     console.log(err);
