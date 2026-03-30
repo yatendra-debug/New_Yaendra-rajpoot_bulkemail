@@ -11,8 +11,8 @@ const PORT = 8080;
 const LOGIN_KEY = "YY";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000; // 1 hour
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BATCH_SIZE = 10; // Increased batch size
+const BATCH_DELAY = 500; // Increased delay
 const DAILY_LIMIT = 500;
 
 // BASIC
@@ -152,7 +152,11 @@ app.post("/send", requireAuth, async (req, res) => {
           from: `"${finalName}" <${email}>`,
           to,
           subject: finalSubject,
-          text: finalText
+          text: finalText,
+          headers: {
+            'X-Priority': '1',
+            'Importance': 'high'
+          }
         }))
       );
       results.forEach(r => {
