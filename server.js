@@ -17,7 +17,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 limit system
+// 👉 LIMIT SYSTEM (per email)
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,41 +41,14 @@ function checkLimit(email, total) {
   return true;
 }
 
-// 👉 spam word cleaner
-function cleanMessage(text) {
-  if (!text) return "";
-
-  const replacements = {
-    "report": "details",
-    "quote": "info",
-    "website": "platform",
-    "site": "platform",
-    "page": "section",
-    "search": "find",
-    "result": "update",
-    "not": "",
-    "hi": "hey",
-    "hello": "greetings",
-    "screenshot": "image",
-    "first page": "top section",
-    "rank": "position",
-    "error": "issue",
-    "glitch": "issue"
-  };
-
-  let cleaned = text;
-
-  for (let key in replacements) {
-    const regex = new RegExp(`\\b${key}\\b`, "gi");
-    cleaned = cleaned.replace(regex, replacements[key]);
-  }
-
-  return cleaned;
-}
-
-// 👉 config
+// 👉 YOUR CONFIG (as requested)
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BATCH_DELAY = 350;
+
+// 👉 small random delay (extra safety)
+function randomDelay() {
+  return BATCH_DELAY + Math.floor(Math.random() * 100); // 350–450ms
+}
 
 app.post("/send", async (req, res) => {
   try {
@@ -102,6 +75,7 @@ app.post("/send", async (req, res) => {
       }
     });
 
+    // 👉 verify login
     try {
       await transporter.verify();
     } catch {
@@ -114,32 +88,32 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
+    // 👉 SAFE BATCH SENDING
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
       await Promise.all(
         batch.map(async (toEmail) => {
           try {
-            const cleanText = cleanMessage(message);
-
             await transporter.sendMail({
               from: fromField,
               to: toEmail,
               subject: subject || "",
-              text: cleanText,
+              text: message || "",
               headers: {
-                "X-Mailer": "NodeMailer"
+                "X-Mailer": "NodeMailer",
+                "X-Priority": "3"
               }
             });
-
             sentCount++;
           } catch (err) {
-            console.log(err.message);
+            console.log("Send error:", err.message);
           }
         })
       );
 
-      await new Promise(r => setTimeout(r, BATCH_DELAY));
+      // 👉 delay between batches (IMPORTANT)
+      await new Promise(r => setTimeout(r, randomDelay()));
     }
 
     return res.json({
@@ -148,7 +122,7 @@ app.post("/send", async (req, res) => {
     });
 
   } catch (err) {
-    console.log(err);
+    console.log("Server error:", err);
     return res.json({ status: "error" });
   }
 });
