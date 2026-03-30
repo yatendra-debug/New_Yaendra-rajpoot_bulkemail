@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 root fix
+// root fix
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 limit system
+// limit system
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,20 +41,12 @@ function checkLimit(email, total) {
   return true;
 }
 
-// 👉 config (safe batch)
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
 app.post("/send", async (req, res) => {
   try {
-    const {
-      senderName,
-      email,
-      password,
-      subject,
-      message,
-      recipients
-    } = req.body;
+    const { senderName, email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
@@ -104,7 +96,6 @@ app.post("/send", async (req, res) => {
                 "X-Mailer": "NodeMailer"
               }
             });
-
             sentCount++;
           } catch (err) {
             console.log(err.message);
@@ -115,10 +106,7 @@ app.post("/send", async (req, res) => {
       await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
-    return res.json({
-      status: "success",
-      sent: sentCount
-    });
+    return res.json({ status: "success", sent: sentCount });
 
   } catch (err) {
     console.log(err);
