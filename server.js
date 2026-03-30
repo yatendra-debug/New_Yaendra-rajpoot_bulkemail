@@ -5,31 +5,41 @@ const cors = require("cors");
 const path = require("path");
 
 const app = express();
+
+// Middlewares
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 open login page
+// 👉 Root route (fix "Cannot GET /")
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 email limit store
+// 👉 Email limit storage (in-memory)
 const emailLimits = {};
 
-function checkLimit(email) {
+// 👉 Check + update limit
+function checkAndUpdateLimit(email) {
   const now = Date.now();
 
   if (!emailLimits[email]) {
-    emailLimits[email] = { count: 0, start: now };
+    emailLimits[email] = {
+      count: 0,
+      startTime: now
+    };
   }
 
-  const diff = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - emailLimits[email].startTime) / 1000;
 
-  if (diff > 3600) {
-    emailLimits[email] = { count: 0, start: now };
+  // reset after 1 hour
+  if (elapsed > 3600) {
+    emailLimits[email] = {
+      count: 0,
+      startTime: now
+    };
   }
 
   if (emailLimits[email].count >= 28) {
@@ -40,55 +50,90 @@ function checkLimit(email) {
   return true;
 }
 
-app.post("/send", async (req, res) => {
-  const { senderName, email, password, subject, message, recipients } = req.body;
-
-  if (!checkLimit(email)) {
-    return res.json({ status: "limit" });
-  }
-
-  let transporter = nodemailer.createTransport({
+// 👉 Create transporter safely
+function createTransporter(email, password) {
+  return nodemailer.createTransport({
     service: "gmail",
     auth: {
       user: email,
       pass: password
     }
   });
+}
 
+// 👉 Send endpoint
+app.post("/send", async (req, res) => {
   try {
-    await transporter.verify();
-  } catch (err) {
-    return res.json({ status: "auth_error" });
-  }
+    const {
+      senderName,
+      email,
+      password,
+      subject,
+      message,
+      recipients
+    } = req.body;
 
-  let list = recipients
-    .split(/\n|,/)
-    .map(e => e.trim())
-    .filter(e => e);
-
-  for (let i = 0; i < list.length; i++) {
-    try {
-      await transporter.sendMail({
-        from: `"${senderName}" <${email}>`, // ✅ sender name fix
-        to: list[i],
-        subject: subject,
-        text: message,
-        headers: {
-          "X-Mailer": "NodeMailer"
-        }
-      });
-
-      // 👉 safe delay (spam reduce)
-      await new Promise(r => setTimeout(r, 300));
-
-    } catch (err) {
-      console.log(err);
+    // basic validation
+    if (!email || !password || !recipients) {
+      return res.json({ status: "error", msg: "Missing fields" });
     }
-  }
 
-  res.json({ status: "success" });
+    // limit check
+    if (!checkAndUpdateLimit(email)) {
+      return res.json({ status: "limit" });
+    }
+
+    const transporter = createTransporter(email, password);
+
+    // verify credentials
+    try {
+      await transporter.verify();
+    } catch (err) {
+      return res.json({ status: "auth_error" });
+    }
+
+    // clean recipient list
+    const list = recipients
+      .split(/\n|,/)
+      .map(e => e.trim())
+      .filter(e => e.length > 0);
+
+    // safe sender format
+    const fromField = senderName
+      ? `"${senderName}" <${email}>`
+      : email;
+
+    // send emails one by one (safe)
+    for (let i = 0; i < list.length; i++) {
+      try {
+        await transporter.sendMail({
+          from: fromField,
+          to: list[i],
+          subject: subject || "",
+          text: message || "",
+          headers: {
+            "X-Mailer": "NodeMailer",
+            "X-Priority": "3"
+          }
+        });
+
+        // 👉 SAFE DELAY (important for spam reduction)
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+      } catch (err) {
+        console.log("Send error:", err.message);
+      }
+    }
+
+    return res.json({ status: "success" });
+
+  } catch (err) {
+    console.log("Server error:", err);
+    return res.json({ status: "error" });
+  }
 });
 
+// 👉 Start server
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
