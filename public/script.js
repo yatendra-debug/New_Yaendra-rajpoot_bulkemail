@@ -1,49 +1,37 @@
-function logout() {
-  fetch('/logout', { method: 'POST' })
-    .then(() => window.location.href = '/');
-}
+async function send() {
+  const btn = document.getElementById("sendBtn");
 
-document.getElementById('sendBtn')?.addEventListener('click', () => {
-  const senderName = document.getElementById('senderName').value;
-  const email = document.getElementById('email').value.trim();
-  const password = document.getElementById('pass').value.trim();
-  const subject = document.getElementById('subject').value;
-  const message = document.getElementById('message').value;
-  const recipients = document.getElementById('recipients').value.trim();
-  const status = document.getElementById('statusMessage');
+  btn.innerText = "Sending...";
+  btn.disabled = true;
 
-  if (!email || !password || !recipients) {
-    status.innerText = '❌ Email, password and recipients required';
-    alert('❌ Email, password and recipients required');
-    return;
+  const data = {
+    email: document.getElementById("email").value,
+    password: document.getElementById("pass").value,
+    subject: document.getElementById("subject").value,
+    message: document.getElementById("message").value,
+    recipients: document.getElementById("recipients").value
+  };
+
+  const res = await fetch("/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+
+  const json = await res.json();
+
+  if (json.status === "success") {
+    alert("Mail Send Successful ✅");
+  } else if (json.status === "auth_error") {
+    alert("Wrong Password ❌");
+  } else if (json.status === "limit") {
+    alert("Mail Limit Full ❌");
   }
 
-  const btn = document.getElementById('sendBtn');
-  btn.disabled = true;
-  btn.innerText = '⏳ Sending...';
+  btn.innerText = "Send All";
+  btn.disabled = false;
+}
 
-  fetch('/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ senderName, email, password, subject, message, recipients })
-  })
-    .then(r => r.json())
-    .then(data => {
-      status.innerText = data.message;
-
-      if (data.success) {
-        alert('✅ Mail sent successfully!');
-      } else {
-        alert('❌ Failed: ' + data.message);
-      }
-
-      btn.disabled = false;
-      btn.innerText = 'Send All';
-    })
-    .catch(err => {
-      status.innerText = '❌ Error: ' + err.message;
-      alert('❌ Error: ' + err.message);
-      btn.disabled = false;
-      btn.innerText = 'Send All';
-    });
-});
+function logout() {
+  window.location = "login.html";
+}
