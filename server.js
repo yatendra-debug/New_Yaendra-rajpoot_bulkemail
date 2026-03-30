@@ -12,7 +12,7 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 Root fix
+// 👉 root
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
@@ -20,7 +20,7 @@ app.get("/", (req, res) => {
 // 👉 LIMIT SYSTEM (per email)
 const emailLimits = {};
 
-function checkLimit(email, totalToSend) {
+function checkLimit(email, total) {
   const now = Date.now();
 
   if (!emailLimits[email]) {
@@ -29,34 +29,31 @@ function checkLimit(email, totalToSend) {
 
   const diff = (now - emailLimits[email].start) / 1000;
 
-  // reset after 1 hour
   if (diff > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  if (emailLimits[email].count + totalToSend > 28) {
+  if (emailLimits[email].count + total > 28) {
     return false;
   }
 
-  emailLimits[email].count += totalToSend;
+  emailLimits[email].count += total;
   return true;
 }
 
-// 👉 CONFIG (as you wanted)
+// 👉 SAME SPEED (as you want)
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
+
+// 👉 micro delay (spam reduce)
+function microDelay() {
+  return 50 + Math.floor(Math.random() * 100); // 50–150ms
+}
 
 // 👉 SEND API
 app.post("/send", async (req, res) => {
   try {
-    const {
-      senderName,
-      email,
-      password,
-      subject,
-      message,
-      recipients
-    } = req.body;
+    const { senderName, email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
@@ -67,23 +64,25 @@ app.post("/send", async (req, res) => {
       .map(e => e.trim())
       .filter(e => e);
 
-    // 👉 limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
+    // 👉 better transporter (stable + safe)
     const transporter = nodemailer.createTransport({
       service: "gmail",
+      pool: true,
+      maxConnections: 2,
+      maxMessages: 100,
       auth: {
         user: email,
         pass: password
       }
     });
 
-    // 👉 verify login
     try {
       await transporter.verify();
-    } catch (err) {
+    } catch {
       return res.json({ status: "auth_error" });
     }
 
@@ -93,37 +92,41 @@ app.post("/send", async (req, res) => {
 
     let successCount = 0;
 
-    // 👉 BATCH SENDING
+    // 👉 SMART BATCH (staggered, not full blast)
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      await Promise.all(
-        batch.map(async (toEmail) => {
-          try {
-            await transporter.sendMail({
-              from: fromField,
-              to: toEmail,
-              subject: subject || "",
-              text: message || "",
-              headers: {
-                "X-Mailer": "NodeMailer"
-              }
-            });
+      for (let j = 0; j < batch.length; j++) {
+        try {
+          await transporter.sendMail({
+            from: fromField,
+            to: batch[j],
+            subject: subject || "",
+            text: message || "",
+            headers: {
+              "X-Mailer": "NodeMailer",
+              "X-Priority": "3",
+              "Precedence": "bulk"
+            }
+          });
 
-            successCount++;
-          } catch (err) {
-            console.log("Send error:", err.message);
-          }
-        })
-      );
+          successCount++;
 
-      // 👉 delay between batches
+          // 👉 micro delay (VERY IMPORTANT)
+          await new Promise(r => setTimeout(r, microDelay()));
+
+        } catch (err) {
+          console.log("Send error:", err.message);
+        }
+      }
+
+      // 👉 main delay (same speed feel)
       await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
       status: "success",
-      sent: successCount // 👉 popup ke liye
+      sent: successCount
     });
 
   } catch (err) {
