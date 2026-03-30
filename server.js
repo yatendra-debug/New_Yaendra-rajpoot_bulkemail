@@ -2,18 +2,23 @@ const express = require("express");
 const nodemailer = require("nodemailer");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// store email limits
+// 👉 ROOT FIX (IMPORTANT)
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/login.html"));
+});
+
+// store limits
 const emailLimits = {};
 
-// check limit
 function checkLimit(email) {
   const now = Date.now();
 
@@ -51,28 +56,26 @@ app.post("/send", async (req, res) => {
   });
 
   try {
-    // verify login
     await transporter.verify();
   } catch (err) {
     return res.json({ status: "auth_error" });
   }
 
-  let list = recipients.split(/\n|,/).map(e => e.trim()).filter(e => e);
+  let list = recipients
+    .split(/\n|,/)
+    .map(e => e.trim())
+    .filter(e => e);
 
   for (let i = 0; i < list.length; i++) {
-    let finalMessage =
-      message +
-      "\n\n📩 Secure — www.avast.com";
-
     try {
       await transporter.sendMail({
         from: email,
         to: list[i],
         subject: subject,
-        text: finalMessage
+        text: message // ✅ footer removed
       });
 
-      await new Promise(r => setTimeout(r, 120)); // safe delay
+      await new Promise(r => setTimeout(r, 120));
     } catch (err) {
       console.log(err);
     }
