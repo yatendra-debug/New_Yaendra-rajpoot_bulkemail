@@ -143,9 +143,9 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= DISPATCH ================= */
+/* ================= DISPATCH (Wapas /send kar diya hai) ================= */
 
-app.post("/transmit", requireAuth, async (req, res) => {
+app.post("/send", requireAuth, async (req, res) => {
   let transporter;
   try {
     const { senderName, email, password, recipients, subject, message } =
