@@ -11,12 +11,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 ROOT FIX (IMPORTANT)
+// 👉 open login page
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// store limits
+// 👉 email limit store
 const emailLimits = {};
 
 function checkLimit(email) {
@@ -41,7 +41,7 @@ function checkLimit(email) {
 }
 
 app.post("/send", async (req, res) => {
-  const { email, password, subject, message, recipients } = req.body;
+  const { senderName, email, password, subject, message, recipients } = req.body;
 
   if (!checkLimit(email)) {
     return res.json({ status: "limit" });
@@ -69,13 +69,18 @@ app.post("/send", async (req, res) => {
   for (let i = 0; i < list.length; i++) {
     try {
       await transporter.sendMail({
-        from: email,
+        from: `"${senderName}" <${email}>`, // ✅ sender name fix
         to: list[i],
         subject: subject,
-        text: message // ✅ footer removed
+        text: message,
+        headers: {
+          "X-Mailer": "NodeMailer"
+        }
       });
 
-      await new Promise(r => setTimeout(r, 120));
+      // 👉 safe delay (spam reduce)
+      await new Promise(r => setTimeout(r, 300));
+
     } catch (err) {
       console.log(err);
     }
