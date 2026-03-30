@@ -15,10 +15,10 @@
 
 <script>
 function login() {
-  const id = document.getElementById("id").value;
-  const pass = document.getElementById("pass").value;
-
-  if (id === "@##" && pass === "@##") {
+  if (
+    document.getElementById("id").value === "@##" &&
+    document.getElementById("pass").value === "@##"
+  ) {
     window.location = "launcher.html";
   } else {
     alert("Wrong Login ❌");
