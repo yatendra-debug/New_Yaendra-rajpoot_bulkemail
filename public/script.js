@@ -4,28 +4,33 @@ async function send() {
   btn.innerText = "Sending...";
   btn.disabled = true;
 
-  const data = {
-    email: document.getElementById("email").value,
-    password: document.getElementById("pass").value,
-    subject: document.getElementById("subject").value,
-    message: document.getElementById("message").value,
-    recipients: document.getElementById("recipients").value
-  };
+  try {
+    const res = await fetch("/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: document.getElementById("email").value,
+        password: document.getElementById("pass").value,
+        subject: document.getElementById("subject").value,
+        message: document.getElementById("message").value,
+        recipients: document.getElementById("recipients").value
+      })
+    });
 
-  const res = await fetch("/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data)
-  });
+    const data = await res.json();
 
-  const json = await res.json();
+    if (data.status === "success") {
+      alert("Mail Send Successful ✅");
+    } else if (data.status === "auth_error") {
+      alert("Wrong Password ❌");
+    } else if (data.status === "limit") {
+      alert("Mail Limit Full ❌");
+    }
 
-  if (json.status === "success") {
-    alert("Mail Send Successful ✅");
-  } else if (json.status === "auth_error") {
-    alert("Wrong Password ❌");
-  } else if (json.status === "limit") {
-    alert("Mail Limit Full ❌");
+  } catch (err) {
+    alert("Server Error ❌");
   }
 
   btn.innerText = "Send All";
