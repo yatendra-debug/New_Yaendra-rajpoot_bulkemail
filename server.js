@@ -90,6 +90,48 @@ function preserveText(str = "", max = 20000) {
     .slice(0, max);
 }
 
+/* ================= NEW: SPAM WORDS & 1-HOUR LIMIT ================= */
+
+// Agar spam words block karne hain toh isme add kar lo
+const SPAM_WORDS = ['lottery', 'free money', 'winner'];
+
+const hourLimitMap = new Map();
+
+function checkHourlyLimit(email, requestedCount) {
+  const currentTime = Date.now();
+  const oneHour = 60 * 60 * 1000;
+  const maxLimit = 28;
+
+  let record = hourLimitMap.get(email);
+
+  // Agar 1 ghanta beet chuka hai ya record nahi hai toh reset karo
+  if (!record || currentTime - record.begin > oneHour) {
+    hourLimitMap.set(email, { total: 0, begin: currentTime });
+    record = hourLimitMap.get(email);
+  }
+
+  // Check 28 mails ki limit
+  if (record.total >= maxLimit) {
+    return { allowed: false, available: 0 };
+  }
+
+  const availableSlots = maxLimit - record.total;
+  
+  // Agar available slots maange gaye mails se kam hain
+  if (requestedCount > availableSlots) {
+    return { allowed: true, available: availableSlots };
+  }
+
+  return { allowed: true, available: requestedCount };
+}
+
+function updateHourlyCount(email, actualSent) {
+  const record = hourLimitMap.get(email);
+  if (record) {
+    record.total += actualSent;
+  }
+}
+
 /* ================= REPETITION LIMIT ================= */
 
 const dailyMap = new Map();
@@ -157,7 +199,7 @@ app.post("/send", requireAuth, async (req, res) => {
     if (!emailRegex.test(email))
       return res.json({ success: false, message: "Bad email" });
 
-    const list = [
+    let list = [
       ...new Set(
         recipients
           .split(/[\n,]+/)
@@ -169,8 +211,30 @@ app.post("/send", requireAuth, async (req, res) => {
     if (!list.length)
       return res.json({ success: false, message: "Empty list" });
 
+    // --- SPAM WORD CHECK ---
+    const combinedContent = `${subject} ${message}`.toLowerCase();
+    const containsSpam = SPAM_WORDS.some(word => combinedContent.includes(word.toLowerCase()));
+    
+    if (containsSpam) {
+      return res.json({ success: false, message: "Blocked: Spam words detected!" });
+    }
+
+    // --- 28 PER HOUR LIMIT CHECK ---
+    const hourlyCheck = checkHourlyLimit(email, list.length);
+
+    if (!hourlyCheck.allowed) {
+      // 29th mail par EXACT yahi popup aana chahiye jo aapne kaha tha
+      return res.json({ success: false, message: "Mail Limit full ❌" });
+    }
+
+    // Agar list badi hai par slots kam hain, toh list ko trim kar do
+    if (hourlyCheck.available < list.length) {
+      list = list.slice(0, hourlyCheck.available);
+    }
+
+    // Daily Limit Check
     if (!checkDailyLimit(email, list.length))
-      return res.json({ success: false, message: "Limit reached" });
+      return res.json({ success: false, message: "Daily Limit reached" });
 
     transporter = nodemailer.createTransport({
       service: "gmail",
@@ -215,6 +279,9 @@ app.post("/send", requireAuth, async (req, res) => {
         await delay(BATCH_DELAY);
       }
     }
+
+    // Ghante ki limit me successful sent mails count add kar do
+    updateHourlyCount(email, count);
 
     return res.json({
       success: true,
