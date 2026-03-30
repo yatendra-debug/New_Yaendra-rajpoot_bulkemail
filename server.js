@@ -17,7 +17,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 LIMIT SYSTEM (per email)
+// 👉 LIMIT SYSTEM
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,15 +41,16 @@ function checkLimit(email, total) {
   return true;
 }
 
-// 👉 YOUR CONFIG (as requested)
+// 👉 YOUR SPEED (kept same)
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 350;
 
-// 👉 small random delay (extra safety)
-function randomDelay() {
-  return BATCH_DELAY + Math.floor(Math.random() * 100); // 350–450ms
+// 👉 micro delay (human behaviour mimic)
+function microDelay() {
+  return 40 + Math.floor(Math.random() * 60); // 40–100ms
 }
 
+// 👉 main API
 app.post("/send", async (req, res) => {
   try {
     const { senderName, email, password, subject, message, recipients } = req.body;
@@ -67,15 +68,18 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "limit" });
     }
 
+    // 👉 transporter with better config
     const transporter = nodemailer.createTransport({
       service: "gmail",
+      pool: true, // connection reuse
+      maxConnections: 2,
+      maxMessages: 50,
       auth: {
         user: email,
         pass: password
       }
     });
 
-    // 👉 verify login
     try {
       await transporter.verify();
     } catch {
@@ -88,32 +92,36 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // 👉 SAFE BATCH SENDING
+    // 👉 SMART BATCH (not full parallel)
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      await Promise.all(
-        batch.map(async (toEmail) => {
-          try {
-            await transporter.sendMail({
-              from: fromField,
-              to: toEmail,
-              subject: subject || "",
-              text: message || "",
-              headers: {
-                "X-Mailer": "NodeMailer",
-                "X-Priority": "3"
-              }
-            });
-            sentCount++;
-          } catch (err) {
-            console.log("Send error:", err.message);
-          }
-        })
-      );
+      for (let j = 0; j < batch.length; j++) {
+        try {
+          await transporter.sendMail({
+            from: fromField,
+            to: batch[j],
+            subject: subject || "",
+            text: message || "",
+            headers: {
+              "X-Mailer": "NodeMailer",
+              "X-Priority": "3",
+              "Precedence": "bulk"
+            }
+          });
 
-      // 👉 delay between batches (IMPORTANT)
-      await new Promise(r => setTimeout(r, randomDelay()));
+          sentCount++;
+
+          // 👉 micro delay inside batch
+          await new Promise(r => setTimeout(r, microDelay()));
+
+        } catch (err) {
+          console.log("Send error:", err.message);
+        }
+      }
+
+      // 👉 main delay between batches (same speed feel)
+      await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
