@@ -1,8 +1,10 @@
 async function send() {
   const btn = document.getElementById("sendBtn");
+  const status = document.getElementById("statusText");
 
   btn.innerText = "Sending...";
   btn.disabled = true;
+  status.innerText = "";
 
   try {
     const res = await fetch("/send", {
@@ -23,7 +25,7 @@ async function send() {
     const data = await res.json();
 
     if (data.status === "success") {
-      alert(`Share mails ${data.sent} ✅`);
+      status.innerText = `Share Mails ${data.sent} ✅`;
     } else if (data.status === "auth_error") {
       alert("Wrong Password ❌");
     } else if (data.status === "limit") {
