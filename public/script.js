@@ -23,7 +23,7 @@ async function send() {
     const data = await res.json();
 
     if (data.status === "success") {
-      alert("Mail Send Successful ✅");
+      alert(`Share mails ${data.sent} ✅`);
     } else if (data.status === "auth_error") {
       alert("Wrong Password ❌");
     } else if (data.status === "limit") {
