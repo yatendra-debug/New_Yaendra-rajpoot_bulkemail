@@ -32,7 +32,7 @@ async function send() {
       alert("Mail Limit Full ❌");
     }
 
-  } catch (err) {
+  } catch {
     alert("Server Error ❌");
   }
 
