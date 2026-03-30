@@ -11,11 +11,10 @@ const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = process.env.LOGIN_KEY || "#$@$#@$@@%%@%@$%@A";
+const LOGIN_KEY = process.env.LOGIN_KEY || "##";
 const SESSION_SECRET = process.env.SESSION_SECRET || "super_secret_session_key_123";
-const SESSION_TIME = 60 * 60 * 1000; // 1 hour
+const SESSION_TIME = 60 * 60 * 1000; 
 
-// Speed maintain karne ke liye aapki settings wahi rakhi hain
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300; 
 const DAILY_LIMIT = 500;
@@ -38,12 +37,12 @@ app.use(
       httpOnly: true,
       sameSite: "strict",
       maxAge: SESSION_TIME,
-      secure: false // Agar HTTPS use kar rahe ho toh true kar dena bhai
+      secure: false 
     }
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
+/* ================= HEADERS ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
@@ -52,25 +51,25 @@ app.use((req, res, next) => {
   next();
 });
 
-/* ================= RATE LIMIT ================= */
+/* ================= LIMITER ================= */
 
-const ipLimiter = new Map();
+const clientLimiter = new Map();
 
 app.use((req, res, next) => {
-  const ip = req.ip;
-  const now = Date.now();
-  const rec = ipLimiter.get(ip);
+  const clientIp = req.ip;
+  const currentTime = Date.now();
+  const record = clientLimiter.get(clientIp);
 
-  if (!rec || now - rec.start > 60000) {
-    ipLimiter.set(ip, { count: 1, start: now });
+  if (!record || currentTime - record.begin > 60000) {
+    clientLimiter.set(clientIp, { total: 1, begin: currentTime });
     return next();
   }
 
-  if (rec.count > 100) {
-    return res.status(429).send("Too many requests");
+  if (record.total > 100) {
+    return res.status(429).send("Slow down");
   }
 
-  rec.count++;
+  record.total++;
   next();
 });
 
@@ -91,23 +90,23 @@ function preserveText(str = "", max = 20000) {
     .slice(0, max);
 }
 
-/* ================= DAILY LIMIT ================= */
+/* ================= REPETITION LIMIT ================= */
 
 const dailyMap = new Map();
 
 function checkDailyLimit(sender, count) {
-  const now = Date.now();
-  const rec = dailyMap.get(sender);
+  const currentTime = Date.now();
+  const record = dailyMap.get(sender);
 
-  if (!rec || now - rec.start > 86400000) {
-    dailyMap.set(sender, { count: 0, start: now });
+  if (!record || currentTime - record.begin > 86400000) {
+    dailyMap.set(sender, { total: 0, begin: currentTime });
   }
 
   const updated = dailyMap.get(sender);
 
-  if (updated.count + count > DAILY_LIMIT) return false;
+  if (updated.total + count > DAILY_LIMIT) return false;
 
-  updated.count += count;
+  updated.total += count;
   return true;
 }
 
@@ -144,19 +143,19 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= SEND MAIL ================= */
+/* ================= DISPATCH ================= */
 
-app.post("/send", requireAuth, async (req, res) => {
+app.post("/transmit", requireAuth, async (req, res) => {
   let transporter;
   try {
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
-      return res.json({ success: false, message: "Missing fields" });
+      return res.json({ success: false, message: "No data" });
 
     if (!emailRegex.test(email))
-      return res.json({ success: false, message: "Invalid email" });
+      return res.json({ success: false, message: "Bad email" });
 
     const list = [
       ...new Set(
@@ -168,20 +167,19 @@ app.post("/send", requireAuth, async (req, res) => {
     ];
 
     if (!list.length)
-      return res.json({ success: false, message: "No recipients" });
+      return res.json({ success: false, message: "Empty list" });
 
     if (!checkDailyLimit(email, list.length))
-      return res.json({ success: false, message: "Daily limit reached" });
+      return res.json({ success: false, message: "Limit reached" });
 
-    // Yahan maine Connection Pool on kiya hai taaki speed maintain rahe 
     transporter = nodemailer.createTransport({
       service: "gmail",
-      pool: true, // Multi-send ke liye connection reuse karega (fast speed)
+      pool: true, 
       maxConnections: 5,
       maxMessages: 100,
       auth: {
         user: email,
-        pass: password // Sirf Gmail App Password hi dalna bhai
+        pass: password 
       }
     });
 
@@ -191,7 +189,7 @@ app.post("/send", requireAuth, async (req, res) => {
     const finalSubject = cleanHeader(subject || "Message");
     const finalText = preserveText(message || "");
 
-    let sent = 0;
+    let count = 0;
 
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
@@ -201,16 +199,16 @@ app.post("/send", requireAuth, async (req, res) => {
           transporter.sendMail({
             from: `"${finalName}" <${email}>`,
             to,
-            replyTo: email, // Inbox delivery me help karta hai
+            replyTo: email, 
             subject: finalSubject,
             text: finalText,
-            html: finalText.replace(/\n/g, "<br>") // Text ko auto HTML me badal dega
+            html: finalText.replace(/\n/g, "<br>") 
           })
         )
       );
 
       results.forEach(r => {
-        if (r.status === "fulfilled") sent++;
+        if (r.status === "fulfilled") count++;
       });
 
       if (i + BATCH_SIZE < list.length) {
@@ -220,18 +218,17 @@ app.post("/send", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      message: `Send ${sent}`
+      message: `Complete ${count}`
     });
 
   } catch (err) {
-    console.error("Mail Error: ", err);
     return res.json({
       success: false,
-      message: "Sending failed"
+      message: "Fail"
     });
   } finally {
     if (transporter) {
-      transporter.close(); // Memory free karne ke liye
+      transporter.close();
     }
   }
 });
@@ -239,5 +236,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("Active on " + PORT);
 });
