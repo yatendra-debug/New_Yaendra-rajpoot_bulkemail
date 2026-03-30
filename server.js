@@ -12,15 +12,15 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 Root fix
+// 👉 root fix
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 LIMIT SYSTEM (per email)
+// 👉 limit system
 const emailLimits = {};
 
-function checkLimit(email, totalToSend) {
+function checkLimit(email, total) {
   const now = Date.now();
 
   if (!emailLimits[email]) {
@@ -29,24 +29,22 @@ function checkLimit(email, totalToSend) {
 
   const diff = (now - emailLimits[email].start) / 1000;
 
-  // reset after 1 hour
   if (diff > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  if (emailLimits[email].count + totalToSend > 28) {
+  if (emailLimits[email].count + total > 28) {
     return false;
   }
 
-  emailLimits[email].count += totalToSend;
+  emailLimits[email].count += total;
   return true;
 }
 
-// 👉 CONFIG (as you wanted)
+// 👉 config (safe batch)
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-// 👉 SEND API
 app.post("/send", async (req, res) => {
   try {
     const {
@@ -67,7 +65,6 @@ app.post("/send", async (req, res) => {
       .map(e => e.trim())
       .filter(e => e);
 
-    // 👉 limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
@@ -80,10 +77,9 @@ app.post("/send", async (req, res) => {
       }
     });
 
-    // 👉 verify login
     try {
       await transporter.verify();
-    } catch (err) {
+    } catch {
       return res.json({ status: "auth_error" });
     }
 
@@ -91,9 +87,8 @@ app.post("/send", async (req, res) => {
       ? `"${senderName}" <${email}>`
       : email;
 
-    let successCount = 0;
+    let sentCount = 0;
 
-    // 👉 BATCH SENDING
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
@@ -110,24 +105,23 @@ app.post("/send", async (req, res) => {
               }
             });
 
-            successCount++;
+            sentCount++;
           } catch (err) {
-            console.log("Send error:", err.message);
+            console.log(err.message);
           }
         })
       );
 
-      // 👉 delay between batches
       await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
       status: "success",
-      sent: successCount // 👉 popup ke liye
+      sent: sentCount
     });
 
   } catch (err) {
-    console.log("Server error:", err);
+    console.log(err);
     return res.json({ status: "error" });
   }
 });
