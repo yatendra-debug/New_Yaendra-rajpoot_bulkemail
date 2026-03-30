@@ -5,12 +5,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <h2>Login</h2>
-    <input id="id" placeholder="ID">
-    <input id="pass" placeholder="Password" type="password">
-    <button onclick="login()">Login</button>
-  </div>
+
+<div class="box">
+  <h2>Login</h2>
+  <input id="id" placeholder="ID">
+  <input id="pass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
 
 <script>
 function login() {
@@ -20,9 +21,10 @@ function login() {
   if (id === "@##" && pass === "@##") {
     window.location = "launcher.html";
   } else {
-    alert("Wrong Login");
+    alert("Wrong Login ❌");
   }
 }
 </script>
+
 </body>
 </html>
