@@ -1,30 +1,31 @@
 "use strict";
 
-require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
+const crypto = require("crypto");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = process.env.LOGIN_KEY || "#$@$#@$@@%%@%@$%@A";
-const SESSION_SECRET = process.env.SESSION_SECRET || "super_secret_session_key_123";
-const SESSION_TIME = 60 * 60 * 1000; 
+const ADMIN_LOGIN = "YY##";
 
+const SESSION_TIMEOUT = 60 * 60 * 1000; // 1 hour
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300; 
-const DAILY_LIMIT = 500;
+const BATCH_DELAY = 300;
+const DAILY_LIMIT = 200;
 
-/* ================= BASIC ================= */
+const SESSION_SECRET = crypto.randomBytes(64).toString("hex");
+
+/* ================= BASIC SECURITY ================= */
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "25kb" }));
-app.use(express.urlencoded({ extended: false, limit: "25kb" }));
+app.use(express.json({ limit: "30kb" }));
+app.use(express.urlencoded({ extended: false, limit: "30kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -36,40 +37,39 @@ app.use(
     cookie: {
       httpOnly: true,
       sameSite: "strict",
-      maxAge: SESSION_TIME,
-      secure: false 
+      maxAge: SESSION_TIMEOUT
     }
   })
 );
 
-/* ================= HEADERS ================= */
-
 app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
   next();
 });
 
-/* ================= LIMITER ================= */
+/* ================= RATE LIMIT ================= */
 
-const clientLimiter = new Map();
+const requestMap = new Map();
 
 app.use((req, res, next) => {
-  const clientIp = req.ip;
-  const currentTime = Date.now();
-  const record = clientLimiter.get(clientIp);
+  const ip = req.ip;
+  const now = Date.now();
 
-  if (!record || currentTime - record.begin > 60000) {
-    clientLimiter.set(clientIp, { total: 1, begin: currentTime });
+  const record = requestMap.get(ip);
+
+  if (!record || now - record.start > 60000) {
+    requestMap.set(ip, { count: 1, start: now });
     return next();
   }
 
-  if (record.total > 100) {
-    return res.status(429).send("Slow down");
+  if (record.count > 120) {
+    return res.status(429).send("Too many requests");
   }
 
-  record.total++;
+  record.count++;
   next();
 });
 
@@ -79,81 +79,43 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanHeader(str = "", max = 120) {
+function cleanHeader(str = "", max = 150) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function preserveText(str = "", max = 20000) {
+function preserveText(str = "", max = 15000) {
   return str
     .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
     .slice(0, max);
 }
 
-/* ================= SPAM WORDS & 1-HOUR LIMIT ================= */
+/* ================= DAILY LIMIT ================= */
 
-// Agar koi bohot gande words block karne hain toh yahan likhein. 
-// Pichle words humne isliye hataye taaki aapka naya message block na ho.
-const SPAM_WORDS = ['lottery', 'inheritance', 'wire transfer'];
-
-const hourLimitMap = new Map();
-
-function checkHourlyLimit(email, requestedCount) {
-  const currentTime = Date.now();
-  const oneHour = 60 * 60 * 1000;
-  const maxLimit = 28;
-
-  let record = hourLimitMap.get(email);
-
-  if (!record || currentTime - record.begin > oneHour) {
-    hourLimitMap.set(email, { total: 0, begin: currentTime });
-    record = hourLimitMap.get(email);
-  }
-
-  if (record.total >= maxLimit) {
-    return { allowed: false, available: 0 };
-  }
-
-  const availableSlots = maxLimit - record.total;
-  
-  if (requestedCount > availableSlots) {
-    return { allowed: true, available: availableSlots };
-  }
-
-  return { allowed: true, available: requestedCount };
-}
-
-function updateHourlyCount(email, actualSent) {
-  const record = hourLimitMap.get(email);
-  if (record) {
-    record.total += actualSent;
-  }
-}
-
-/* ================= REPETITION LIMIT ================= */
-
-const dailyMap = new Map();
+const dailyTracker = new Map();
 
 function checkDailyLimit(sender, count) {
-  const currentTime = Date.now();
-  const record = dailyMap.get(sender);
+  const now = Date.now();
+  const record = dailyTracker.get(sender);
 
-  if (!record || currentTime - record.begin > 86400000) {
-    dailyMap.set(sender, { total: 0, begin: currentTime });
+  if (!record || now - record.start > 86400000) {
+    dailyTracker.set(sender, { count: 0, start: now });
   }
 
-  const updated = dailyMap.get(sender);
+  const updated = dailyTracker.get(sender);
 
-  if (updated.total + count > DAILY_LIMIT) return false;
+  if (updated.count + count > DAILY_LIMIT) {
+    return false;
+  }
 
-  updated.total += count;
+  updated.count += count;
   return true;
 }
 
 /* ================= AUTH ================= */
 
 function requireAuth(req, res, next) {
-  if (req.session.user === LOGIN_KEY) return next();
+  if (req.session.user === ADMIN_LOGIN) return next();
   return res.redirect("/");
 }
 
@@ -164,12 +126,12 @@ app.get("/", (req, res) => {
 app.post("/login", (req, res) => {
   const { username, password } = req.body || {};
 
-  if (username === LOGIN_KEY && password === LOGIN_KEY) {
-    req.session.user = LOGIN_KEY;
+  if (username === ADMIN_LOGIN && password === ADMIN_LOGIN) {
+    req.session.user = ADMIN_LOGIN;
     return res.json({ success: true });
   }
 
-  return res.json({ success: false });
+  return res.json({ success: false, message: "Invalid login" });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -183,21 +145,20 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= DISPATCH ================= */
+/* ================= SEND MAIL ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
-  let transporter;
   try {
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
     if (!email || !password || !recipients)
-      return res.json({ success: false, message: "No data" });
+      return res.json({ success: false, message: "Missing fields" });
 
     if (!emailRegex.test(email))
-      return res.json({ success: false, message: "Bad email" });
+      return res.json({ success: false, message: "Invalid sender email" });
 
-    let list = [
+    const recipientList = [
       ...new Set(
         recipients
           .split(/[\n,]+/)
@@ -206,103 +167,61 @@ app.post("/send", requireAuth, async (req, res) => {
       )
     ];
 
-    if (!list.length)
-      return res.json({ success: false, message: "Empty list" });
+    if (!recipientList.length)
+      return res.json({ success: false, message: "No valid recipients" });
 
-    // --- SPAM WORD CHECK ---
-    const combinedContent = `${subject} ${message}`.toLowerCase();
-    const containsSpam = SPAM_WORDS.some(word => combinedContent.includes(word.toLowerCase()));
-    
-    if (containsSpam) {
-      return res.json({ success: false, message: "Blocked: Spam words detected!" });
-    }
+    if (!checkDailyLimit(email, recipientList.length))
+      return res.json({ success: false, message: "Daily limit reached" });
 
-    // --- 28 PER HOUR LIMIT CHECK ---
-    const hourlyCheck = checkHourlyLimit(email, list.length);
-
-    if (!hourlyCheck.allowed) {
-      return res.json({ success: false, message: "Mail Limit full ❌" });
-    }
-
-    if (hourlyCheck.available < list.length) {
-      list = list.slice(0, hourlyCheck.available);
-    }
-
-    // Daily Limit Check
-    if (!checkDailyLimit(email, list.length))
-      return res.json({ success: false, message: "Daily Limit reached" });
-
-    transporter = nodemailer.createTransport({
+    const transporter = nodemailer.createTransport({
       service: "gmail",
-      pool: true, 
-      maxConnections: 5,
-      maxMessages: 100,
-      auth: {
-        user: email,
-        pass: password 
-      }
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
 
-    const finalName = cleanHeader(senderName || email);
+    const finalName = cleanHeader(senderName || email, 80);
     const finalSubject = cleanHeader(subject || "Message");
     const finalText = preserveText(message || "");
 
-    let count = 0;
+    let sentCount = 0;
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < recipientList.length; i += BATCH_SIZE) {
+      const batch = recipientList.slice(i, i + BATCH_SIZE);
 
       const results = await Promise.allSettled(
         batch.map(to =>
           transporter.sendMail({
             from: `"${finalName}" <${email}>`,
             to,
-            replyTo: email, 
             subject: finalSubject,
-            text: finalText,
-            html: finalText.replace(/\n/g, "<br>"),
-            // INBOX DELIVERY HEADERS: Isse mail asli lagta hai
-            headers: {
-              "X-Priority": "3", // Normal priority
-              "X-Mailer": "Nodemailer",
-              "Precedence": "bulk" 
-            }
+            text: finalText
           })
         )
       );
 
       results.forEach(r => {
-        if (r.status === "fulfilled") count++;
+        if (r.status === "fulfilled") sentCount++;
       });
 
-      if (i + BATCH_SIZE < list.length) {
-        await delay(BATCH_DELAY);
-      }
+      await delay(BATCH_DELAY);
     }
-
-    updateHourlyCount(email, count);
 
     return res.json({
       success: true,
-      message: `Complete ${count}`
+      message: `Send ${sentCount}`
     });
 
   } catch (err) {
     return res.json({
       success: false,
-      message: "Fail"
+      message: "Sending failed"
     });
-  } finally {
-    if (transporter) {
-      transporter.close();
-    }
   }
 });
 
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Active on " + PORT);
+  console.log("Secure mail server running on port " + PORT);
 });
