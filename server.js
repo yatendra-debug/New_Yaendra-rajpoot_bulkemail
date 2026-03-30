@@ -12,7 +12,7 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root fix
+// root
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
