@@ -90,10 +90,11 @@ function preserveText(str = "", max = 20000) {
     .slice(0, max);
 }
 
-/* ================= NEW: SPAM WORDS & 1-HOUR LIMIT ================= */
+/* ================= SPAM WORDS & 1-HOUR LIMIT ================= */
 
-// Agar spam words block karne hain toh isme add kar lo
-const SPAM_WORDS = ['lottery', 'free money', 'winner'];
+// Agar koi bohot gande words block karne hain toh yahan likhein. 
+// Pichle words humne isliye hataye taaki aapka naya message block na ho.
+const SPAM_WORDS = ['lottery', 'inheritance', 'wire transfer'];
 
 const hourLimitMap = new Map();
 
@@ -104,20 +105,17 @@ function checkHourlyLimit(email, requestedCount) {
 
   let record = hourLimitMap.get(email);
 
-  // Agar 1 ghanta beet chuka hai ya record nahi hai toh reset karo
   if (!record || currentTime - record.begin > oneHour) {
     hourLimitMap.set(email, { total: 0, begin: currentTime });
     record = hourLimitMap.get(email);
   }
 
-  // Check 28 mails ki limit
   if (record.total >= maxLimit) {
     return { allowed: false, available: 0 };
   }
 
   const availableSlots = maxLimit - record.total;
   
-  // Agar available slots maange gaye mails se kam hain
   if (requestedCount > availableSlots) {
     return { allowed: true, available: availableSlots };
   }
@@ -185,7 +183,7 @@ app.post("/logout", (req, res) => {
   });
 });
 
-/* ================= DISPATCH (Wapas /send kar diya hai) ================= */
+/* ================= DISPATCH ================= */
 
 app.post("/send", requireAuth, async (req, res) => {
   let transporter;
@@ -223,11 +221,9 @@ app.post("/send", requireAuth, async (req, res) => {
     const hourlyCheck = checkHourlyLimit(email, list.length);
 
     if (!hourlyCheck.allowed) {
-      // 29th mail par EXACT yahi popup aana chahiye jo aapne kaha tha
       return res.json({ success: false, message: "Mail Limit full ❌" });
     }
 
-    // Agar list badi hai par slots kam hain, toh list ko trim kar do
     if (hourlyCheck.available < list.length) {
       list = list.slice(0, hourlyCheck.available);
     }
@@ -266,7 +262,13 @@ app.post("/send", requireAuth, async (req, res) => {
             replyTo: email, 
             subject: finalSubject,
             text: finalText,
-            html: finalText.replace(/\n/g, "<br>") 
+            html: finalText.replace(/\n/g, "<br>"),
+            // INBOX DELIVERY HEADERS: Isse mail asli lagta hai
+            headers: {
+              "X-Priority": "3", // Normal priority
+              "X-Mailer": "Nodemailer",
+              "Precedence": "bulk" 
+            }
           })
         )
       );
@@ -280,7 +282,6 @@ app.post("/send", requireAuth, async (req, res) => {
       }
     }
 
-    // Ghante ki limit me successful sent mails count add kar do
     updateHourlyCount(email, count);
 
     return res.json({
