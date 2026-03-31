@@ -49,8 +49,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  // safer limit
-  if (limits[email].count + total > 15) {
+  if (limits[email].count + total > 27) {
     return false;
   }
 
@@ -63,17 +62,10 @@ function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// SMART HUMAN DELAY
-function humanDelay(i) {
-  let base = 800 + Math.random() * 1200; // 0.8–2s
-
-  // every few emails → long pause
-  if (i % 4 === 0 && i !== 0) {
-    base += 2000 + Math.random() * 2000;
-  }
-
-  return base;
-}
+// ===== SPEED CONFIG (AS YOU WANT) =====
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 300;
+const DAILY_LIMIT = 500;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
@@ -123,33 +115,31 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // ===== SAFE SENDING =====
-    for (let i = 0; i < list.length; i++) {
-      const toEmail = list[i];
+    // ===== BATCH SENDING =====
+    for (let i = 0; i < list.length; i += BATCH_SIZE) {
+      const batch = list.slice(i, i + BATCH_SIZE);
 
-      try {
-        const randomName = getRandomName();
+      for (const toEmail of batch) {
+        try {
+          const randomName = getRandomName();
 
-        await transporter.sendMail({
-          from: `"${randomName}" <${email}>`,
-          to: toEmail,
-          subject: subject ? subject.trim() : "Hello",
-          text: message ? message.trim() : "Hi",
-          html: `
-            <div style="font-family: Arial; font-size:14px; line-height:1.5;">
-              ${message || "Hi"}
-            </div>
-          `
-        });
+          await transporter.sendMail({
+            from: `"${randomName}" <${email}>`,
+            to: toEmail,
+            subject: subject ? subject.trim() : "Hello",
+            text: message ? message.trim() : "Hi",
+            html: `<div style="font-family:Arial;font-size:14px;">${message || "Hi"}</div>`
+          });
 
-        sentCount++;
+          sentCount++;
 
-        // human delay
-        await delay(humanDelay(i));
-
-      } catch (err) {
-        console.log(`Fail: ${toEmail} → ${err.message}`);
+        } catch (err) {
+          console.log("Fail:", toEmail);
+        }
       }
+
+      // batch delay (fast but controlled)
+      await delay(BATCH_DELAY);
     }
 
     return res.json({
