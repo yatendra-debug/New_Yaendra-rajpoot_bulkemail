@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root
+// root route
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// LIMIT SYSTEM
+// ================= LIMIT SYSTEM =================
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -27,9 +27,9 @@ function checkLimit(email, total) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  const diff = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - emailLimits[email].start) / 1000;
 
-  if (diff > 3600) {
+  if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
@@ -41,16 +41,16 @@ function checkLimit(email, total) {
   return true;
 }
 
-// YOUR CONFIG
+// ================= CONFIG =================
 const BATCH_SIZE = 4;
 const BASE_DELAY = 300;
 
-// slight randomization (important)
+// natural delay
 function getDelay() {
-  return BASE_DELAY + Math.floor(Math.random() * 80); // 300–380ms
+  return BASE_DELAY + Math.floor(Math.random() * 70); // 300–370ms
 }
 
-// transporter
+// ================= TRANSPORT =================
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
@@ -64,6 +64,7 @@ function createTransporter(email, password) {
   });
 }
 
+// ================= SEND API =================
 app.post("/send", async (req, res) => {
   try {
     const { senderName, email, password, subject, message, recipients } = req.body;
@@ -75,7 +76,7 @@ app.post("/send", async (req, res) => {
     const list = recipients
       .split(/\n|,/)
       .map(e => e.trim())
-      .filter(e => e);
+      .filter(Boolean);
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
@@ -95,15 +96,15 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // SAFE STAGGERED BATCH
+    // ================= SAFE SENDING =================
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (let j = 0; j < batch.length; j++) {
+      for (const toEmail of batch) {
         try {
           await transporter.sendMail({
             from: fromField,
-            to: batch[j],
+            to: toEmail,
             subject: subject || "",
             text: message || "",
             headers: {
@@ -114,8 +115,8 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
-          // micro delay inside batch
-          await new Promise(r => setTimeout(r, 80 + Math.random() * 60));
+          // small internal delay
+          await new Promise(r => setTimeout(r, 70 + Math.random() * 50));
 
         } catch (err) {
           console.log("Send error:", err.message);
@@ -137,6 +138,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
+// ================= START =================
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
