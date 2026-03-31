@@ -1,5 +1,5 @@
 {
-  "name": "safe-mail-launcher-pro",
+  "name": "safe-mail-launcher",
   "version": "2.0.0",
   "main": "server.js",
   "scripts": {
