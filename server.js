@@ -12,15 +12,15 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root fix
+// 👉 Root fix
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// limit system
+// 👉 LIMIT SYSTEM (per email)
 const emailLimits = {};
 
-function checkLimit(email, total) {
+function checkLimit(email, totalToSend) {
   const now = Date.now();
 
   if (!emailLimits[email]) {
@@ -29,24 +29,34 @@ function checkLimit(email, total) {
 
   const diff = (now - emailLimits[email].start) / 1000;
 
+  // reset after 1 hour
   if (diff > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  if (emailLimits[email].count + total > 28) {
+  if (emailLimits[email].count + totalToSend > 28) {
     return false;
   }
 
-  emailLimits[email].count += total;
+  emailLimits[email].count += totalToSend;
   return true;
 }
 
+// 👉 CONFIG (as you wanted)
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
+// 👉 SEND API
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, email, password, subject, message, recipients } = req.body;
+    const {
+      senderName,
+      email,
+      password,
+      subject,
+      message,
+      recipients
+    } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
@@ -57,6 +67,7 @@ app.post("/send", async (req, res) => {
       .map(e => e.trim())
       .filter(e => e);
 
+    // 👉 limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
@@ -69,9 +80,10 @@ app.post("/send", async (req, res) => {
       }
     });
 
+    // 👉 verify login
     try {
       await transporter.verify();
-    } catch {
+    } catch (err) {
       return res.json({ status: "auth_error" });
     }
 
@@ -79,8 +91,9 @@ app.post("/send", async (req, res) => {
       ? `"${senderName}" <${email}>`
       : email;
 
-    let sentCount = 0;
+    let successCount = 0;
 
+    // 👉 BATCH SENDING
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
@@ -96,20 +109,25 @@ app.post("/send", async (req, res) => {
                 "X-Mailer": "NodeMailer"
               }
             });
-            sentCount++;
+
+            successCount++;
           } catch (err) {
-            console.log(err.message);
+            console.log("Send error:", err.message);
           }
         })
       );
 
+      // 👉 delay between batches
       await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
-    return res.json({ status: "success", sent: sentCount });
+    return res.json({
+      status: "success",
+      sent: successCount // 👉 popup ke liye
+    });
 
   } catch (err) {
-    console.log(err);
+    console.log("Server error:", err);
     return res.json({ status: "error" });
   }
 });
