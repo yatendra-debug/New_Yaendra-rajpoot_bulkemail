@@ -39,8 +39,8 @@ function checkLimit(email, total) {
 }
 
 // ================= CONFIG =================
-const BATCH_SIZE = 4;
-const BASE_DELAY = 300;
+const BATCH_SIZE = 5;
+const BASE_DELAY = 290;
 
 // human-like delay
 function getDelay() {
