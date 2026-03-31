@@ -16,16 +16,63 @@ app.get("/", (req, res) => {
 // ===== NAME LIST =====
 const names = [
 "Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
-"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
-"Elizabeth","Eliana","Hazel","Chloe","Ellie","Nora","Gianna","Lily",
-"Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail"
+"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora"
 ];
 
+// ===== SUBJECT LIST =====
+const subjects = [
+"Hello",
+"Quick update",
+"Important info",
+"Just checking",
+"Update for you",
+"Hey there",
+"Small request"
+];
+
+// ===== RANDOM NAME =====
 function getRandomName() {
   return names[Math.floor(Math.random() * names.length)];
 }
 
-// ===== VALID EMAIL =====
+// ===== RANDOM SUBJECT =====
+function getRandomSubject(base) {
+  if (!base) {
+    return subjects[Math.floor(Math.random() * subjects.length)];
+  }
+
+  const extra = ["", "!", ".", " :)"];
+  return base + extra[Math.floor(Math.random() * extra.length)];
+}
+
+// ===== SIMPLE MESSAGE VARIATION =====
+function varyMessage(original) {
+  if (!original) return "";
+
+  const greetings = ["Hi", "Hello", "Hey"];
+  const endings = ["Thanks", "Thank you", "Regards"];
+
+  const greet = greetings[Math.floor(Math.random() * greetings.length)];
+  const end = endings[Math.floor(Math.random() * endings.length)];
+
+  let msg = original;
+
+  msg = msg.replace(/check/gi, Math.random() > 0.5 ? "review" : "check");
+  msg = msg.replace(/update/gi, Math.random() > 0.5 ? "info" : "update");
+
+  return `${greet},\n\n${msg}\n\n${end}`;
+}
+
+// ===== FORMAT =====
+function formatMessage(msg) {
+  return msg
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+}
+
+// ===== EMAIL VALID =====
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -58,17 +105,17 @@ function checkLimit(email, total) {
 // ===== DELAY =====
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== SPEED CONFIG =====
+// ===== SPEED =====
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 500;
+const BATCH_DELAY = 300;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 2,   // controlled parallelism (safe)
-    maxMessages: 9876,
+    maxConnections: 2,
+    maxMessages: 50,
     auth: {
       user: email,
       pass: password
@@ -76,18 +123,7 @@ function createTransporter(email, password) {
   });
 }
 
-// ===== FORMAT MESSAGE (SAFE + CLEAN) =====
-function formatMessage(msg) {
-  if (!msg) return "";
-
-  return msg
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
-}
-
-// ===== SEND API =====
+// ===== SEND =====
 app.post("/send", async (req, res) => {
   try {
     const { email, password, subject, message, recipients } = req.body;
@@ -103,10 +139,6 @@ app.post("/send", async (req, res) => {
     let list = recipients.split(/\n|,/).map(e => e.trim());
     list = cleanList(list);
 
-    if (list.length === 0) {
-      return res.json({ status: "error" });
-    }
-
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
@@ -120,26 +152,23 @@ app.post("/send", async (req, res) => {
     }
 
     let sentCount = 0;
-    const htmlMessage = formatMessage(message);
 
-    // ===== BATCH SENDING =====
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
       for (const toEmail of batch) {
         try {
           const randomName = getRandomName();
+          const variedText = varyMessage(message);
+          const htmlMessage = formatMessage(variedText);
+          const variedSubject = getRandomSubject(subject);
 
           await transporter.sendMail({
             from: `"${randomName}" <${email}>`,
             to: toEmail,
-            subject: subject ? subject.trim() : "Hello",
-            text: message ? message.trim() : "Hi",
-            html: `
-              <div style="font-family:Arial; font-size:14px; line-height:1.6;">
-                ${htmlMessage}
-              </div>
-            `
+            subject: variedSubject,
+            text: variedText,
+            html: `<div style="font-family:Arial; line-height:1.6;">${htmlMessage}</div>`
           });
 
           sentCount++;
