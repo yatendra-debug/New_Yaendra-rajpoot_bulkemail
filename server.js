@@ -3,7 +3,7 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
@@ -12,6 +12,19 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
+
+// ===== NAME LIST (YOUR PROVIDED) =====
+const names = [
+"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
+"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
+"Elizabeth","Eliana","Hazel","Chloe","Ellie","Nora","Gianna","Lily",
+"Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail"
+];
+
+// ===== RANDOM NAME =====
+function getRandomName() {
+  return names[Math.floor(Math.random() * names.length)];
+}
 
 // ===== LIMIT SYSTEM =====
 const limits = {};
@@ -29,7 +42,9 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 25) return false;
+  if (limits[email].count + total > 20) {
+    return false;
+  }
 
   limits[email].count += total;
   return true;
@@ -41,36 +56,39 @@ function delay(ms) {
 }
 
 function humanDelay() {
-  return 250 + Math.floor(Math.random() * 200); // 250–450ms
+  return 400 + Math.floor(Math.random() * 400); // 400–800ms
 }
 
 // ===== TRANSPORT =====
-function createTransport(email, pass) {
+function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
-    auth: { user: email, pass },
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 30
+    auth: {
+      user: email,
+      pass: password
+    }
   });
 }
 
-// ===== SEND =====
+// ===== SEND API =====
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, email, password, subject, message, recipients } = req.body;
+    const { email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
     }
 
-    const list = recipients.split(/\n|,/).map(e => e.trim()).filter(Boolean);
+    const list = recipients
+      .split(/\n|,/)
+      .map(e => e.trim())
+      .filter(Boolean);
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
-    const transporter = createTransport(email, password);
+    const transporter = createTransporter(email, password);
 
     try {
       await transporter.verify();
@@ -78,39 +96,44 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "auth_error" });
     }
 
-    const from = senderName ? `"${senderName}" <${email}>` : email;
+    let sentCount = 0;
 
-    let sent = 0;
-
-    for (const to of list) {
+    // ===== SENDING LOOP =====
+    for (const toEmail of list) {
       try {
+
+        const randomName = getRandomName();
+
         await transporter.sendMail({
-          from,
-          to,
-          replyTo: email,
-          subject,
-          text: message,
-          html: `<p>${message}</p>`,
-          headers: {
-            "X-Mailer": "Mailer",
-            "List-Unsubscribe": `<mailto:${email}>`
-          }
+          from: `"${randomName}" <${email}>`,
+          to: toEmail,
+          subject: subject || "",
+          text: message || "",
+          html: `<p>${message}</p>`
         });
 
-        sent++;
+        sentCount++;
+
+        // human delay
         await delay(humanDelay());
 
-      } catch (e) {
-        console.log("Error:", e.message);
+      } catch (err) {
+        console.log("Send error:", err.message);
       }
     }
 
-    res.json({ status: "success", sent });
+    return res.json({
+      status: "success",
+      sent: sentCount
+    });
 
-  } catch {
-    res.json({ status: "error" });
+  } catch (err) {
+    console.log("Server error:", err);
+    return res.json({ status: "error" });
   }
 });
 
 // ===== START =====
-app.listen(PORT, () => console.log("Server running"));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
