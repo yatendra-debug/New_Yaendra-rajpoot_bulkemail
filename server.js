@@ -25,6 +25,16 @@ function getRandomName() {
   return names[Math.floor(Math.random() * names.length)];
 }
 
+// ===== EMAIL VALIDATION =====
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// ===== CLEAN LIST =====
+function cleanList(list) {
+  return [...new Set(list.filter(isValidEmail))];
+}
+
 // ===== LIMIT =====
 const limits = {};
 
@@ -35,11 +45,12 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if ((now - limits[email].start) > 360000008) {
+  if ((now - limits[email].start) > 3600000) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 27) {
+  // safer limit
+  if (limits[email].count + total > 15) {
     return false;
   }
 
@@ -51,12 +62,18 @@ function checkLimit(email, total) {
 function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
-const SESSION_TIME = 60 * 60 * 3500; // 1 hour
 
-// ===== BATCH CONFIG =====
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 250;
-const DAILY_LIMIT = 9688;
+// SMART HUMAN DELAY
+function humanDelay(i) {
+  let base = 800 + Math.random() * 1200; // 0.8–2s
+
+  // every few emails → long pause
+  if (i % 4 === 0 && i !== 0) {
+    base += 2000 + Math.random() * 2000;
+  }
+
+  return base;
+}
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
@@ -78,10 +95,19 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    const list = recipients
+    if (!isValidEmail(email)) {
+      return res.json({ status: "error" });
+    }
+
+    let list = recipients
       .split(/\n|,/)
-      .map(e => e.trim())
-      .filter(Boolean);
+      .map(e => e.trim());
+
+    list = cleanList(list);
+
+    if (list.length === 0) {
+      return res.json({ status: "error" });
+    }
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
@@ -97,31 +123,33 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // ===== BATCH SENDING =====
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    // ===== SAFE SENDING =====
+    for (let i = 0; i < list.length; i++) {
+      const toEmail = list[i];
 
-      for (const toEmail of batch) {
-        try {
-          const randomName = getRandomName();
+      try {
+        const randomName = getRandomName();
 
-          await transporter.sendMail({
-            from: `"${randomName}" <${email}>`,
-            to: toEmail,
-            subject: subject || "",
-            text: message || "",
-            html: `<p>${message}</p>`
-          });
+        await transporter.sendMail({
+          from: `"${randomName}" <${email}>`,
+          to: toEmail,
+          subject: subject ? subject.trim() : "Hello",
+          text: message ? message.trim() : "Hi",
+          html: `
+            <div style="font-family: Arial; font-size:14px; line-height:1.5;">
+              ${message || "Hi"}
+            </div>
+          `
+        });
 
-          sentCount++;
+        sentCount++;
 
-        } catch (err) {
-          console.log("Send error:", err.message);
-        }
+        // human delay
+        await delay(humanDelay(i));
+
+      } catch (err) {
+        console.log(`Fail: ${toEmail} → ${err.message}`);
       }
-
-      // batch delay
-      await delay(BATCH_DELAY);
     }
 
     return res.json({
@@ -130,7 +158,7 @@ app.post("/send", async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Server error:", err);
+    console.log("Server error:", err.message);
     return res.json({ status: "error" });
   }
 });
