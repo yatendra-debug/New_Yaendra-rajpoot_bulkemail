@@ -51,6 +51,7 @@ function checkLimit(email, total) {
 function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
+const SESSION_TIME = 60 * 60 * 3500; // 1 hour
 
 // ===== BATCH CONFIG =====
 const BATCH_SIZE = 5;
