@@ -56,7 +56,7 @@ function delay(ms) {
 }
 
 function humanDelay() {
-  return 250 + Math.floor(Math.random() * 250); // 250–260ms
+  return 150 + Math.floor(Math.random() * 150); // 160ms
 }
 
 // ===== TRANSPORT =====
