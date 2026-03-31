@@ -57,7 +57,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 27) return false;
+  if (limits[email].count + total > 35) return false;
 
   limits[email].count += total;
   return true;
@@ -67,9 +67,9 @@ function checkLimit(email, total) {
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 3;          // 👈 slightly faster
+const BATCH_SIZE = 6;          // 👈 slightly faster
 const PARALLEL = 2;           // 👈 safe parallel
-const BASE_DELAY = 250;       // 👈 faster
+const BASE_DELAY = 150;       // 👈 faster
 const LONG_PAUSE_EVERY = 15;  // 👈 safety break
 
 // ===== TRANSPORT =====
