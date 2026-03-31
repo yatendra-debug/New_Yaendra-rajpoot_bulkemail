@@ -19,48 +19,44 @@ const names = [
 "Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora"
 ];
 
-// ===== SUBJECT LIST =====
-const subjects = [
+// ===== SAFE SUBJECTS =====
+const safeSubjects = [
 "Hello",
-"Quick update",
-"Important info",
+"Quick message",
+"Update",
+"Information",
 "Just checking",
-"Update for you",
-"Hey there",
-"Small request"
+"Hello there"
 ];
 
-// ===== RANDOM NAME =====
+// ===== SAFE GREETINGS =====
+const greetings = ["Hi", "Hello", "Hey"];
+
+// ===== RANDOM HELPERS =====
+function random(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 function getRandomName() {
-  return names[Math.floor(Math.random() * names.length)];
+  return random(names);
 }
 
-// ===== RANDOM SUBJECT =====
-function getRandomSubject(base) {
-  if (!base) {
-    return subjects[Math.floor(Math.random() * subjects.length)];
+// ===== SUBJECT FIX =====
+function getSubject(userSubject) {
+  if (userSubject && userSubject.trim() !== "") {
+    return userSubject.trim(); // user ka same subject
   }
-
-  const extra = ["", "!", ".", " :)"];
-  return base + extra[Math.floor(Math.random() * extra.length)];
+  return random(safeSubjects); // auto safe subject
 }
 
-// ===== SIMPLE MESSAGE VARIATION =====
-function varyMessage(original) {
+// ===== MESSAGE FIX =====
+function buildMessage(original) {
   if (!original) return "";
 
-  const greetings = ["Hi", "Hello", "Hey"];
-  const endings = ["Thanks", "Thank you", "Regards"];
+  const greet = random(greetings);
 
-  const greet = greetings[Math.floor(Math.random() * greetings.length)];
-  const end = endings[Math.floor(Math.random() * endings.length)];
-
-  let msg = original;
-
-  msg = msg.replace(/check/gi, Math.random() > 0.5 ? "review" : "check");
-  msg = msg.replace(/update/gi, Math.random() > 0.5 ? "info" : "update");
-
-  return `${greet},\n\n${msg}\n\n${end}`;
+  // no ending added
+  return `${greet},\n\n${original.trim()}`;
 }
 
 // ===== FORMAT =====
@@ -158,16 +154,17 @@ app.post("/send", async (req, res) => {
 
       for (const toEmail of batch) {
         try {
-          const randomName = getRandomName();
-          const variedText = varyMessage(message);
-          const htmlMessage = formatMessage(variedText);
-          const variedSubject = getRandomSubject(subject);
+          const senderName = getRandomName();
+
+          const finalSubject = getSubject(subject);
+          const finalText = buildMessage(message);
+          const htmlMessage = formatMessage(finalText);
 
           await transporter.sendMail({
-            from: `"${randomName}" <${email}>`,
+            from: `"${senderName}" <${email}>`,
             to: toEmail,
-            subject: variedSubject,
-            text: variedText,
+            subject: finalSubject,
+            text: finalText,
             html: `<div style="font-family:Arial; line-height:1.6;">${htmlMessage}</div>`
           });
 
