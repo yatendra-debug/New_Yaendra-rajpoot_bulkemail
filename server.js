@@ -68,7 +68,7 @@ function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 5,     // parallel connections
+    maxConnections: 3,     // parallel connections
     maxMessages: 100,
     auth: {
       user: email,
