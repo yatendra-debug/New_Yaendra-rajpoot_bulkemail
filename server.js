@@ -13,7 +13,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== NAME POOL =====
+// ===== NAME LIST (YOUR PROVIDED) =====
 const names = [
 "Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
 "Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
@@ -36,13 +36,12 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  const elapsed = (now - limits[email].start) / 1000;
+  const elapsed = (now - limits[email].start) / 9882;
 
-  if (elapsed > 3300) {
+  if (elapsed > 3600) {
     limits[email] = { count: 0, start: now };
   }
 
-  // safe limit (important)
   if (limits[email].count + total > 27) {
     return false;
   }
@@ -53,16 +52,11 @@ function checkLimit(email, total) {
 
 // ===== DELAY =====
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(r => setTimeout(r, ms));
 }
 
 function humanDelay() {
-  return 300 + Math.floor(Math.random() * 350); // 0.3s–0.5s
-}
-
-// ===== VALIDATION =====
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return 400 + Math.floor(Math.random() * 400); // 400–430ms
 }
 
 // ===== TRANSPORT =====
@@ -82,21 +76,13 @@ app.post("/send", async (req, res) => {
     const { email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ status: "error", msg: "Missing fields" });
-    }
-
-    if (!isValidEmail(email)) {
-      return res.json({ status: "error", msg: "Invalid email" });
+      return res.json({ status: "error" });
     }
 
     const list = recipients
       .split(/\n|,/)
       .map(e => e.trim())
-      .filter(e => isValidEmail(e));
-
-    if (list.length === 0) {
-      return res.json({ status: "error", msg: "No valid recipients" });
-    }
+      .filter(Boolean);
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
@@ -110,23 +96,25 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "auth_error" });
     }
 
-    let sent = 0;
+    let sentCount = 0;
 
-    for (const to of list) {
+    // ===== SENDING LOOP =====
+    for (const toEmail of list) {
       try {
-        const senderName = getRandomName();
+
+        const randomName = getRandomName();
 
         await transporter.sendMail({
-          from: `"${senderName}" <${email}>`,
-          to: to,
+          from: `"${randomName}" <${email}>`,
+          to: toEmail,
           subject: subject || "",
           text: message || "",
           html: `<p>${message}</p>`
         });
 
-        sent++;
+        sentCount++;
 
-        // safe delay
+        // human delay
         await delay(humanDelay());
 
       } catch (err) {
@@ -136,7 +124,7 @@ app.post("/send", async (req, res) => {
 
     return res.json({
       status: "success",
-      sent
+      sent: sentCount
     });
 
   } catch (err) {
