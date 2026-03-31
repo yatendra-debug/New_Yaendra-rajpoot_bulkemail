@@ -3,149 +3,115 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 89829;
 
-// ===== ROOT =====
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== SUBJECT =====
-function getSubject(sub) {
-  if (sub && sub.trim() !== "") return sub.trim();
-  return "Hello"; // simple safe fallback
-}
-
-// ===== FORMAT =====
-function format(msg) {
-  return msg
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
-}
-
-// ===== VALID =====
-function isValid(email) {
+function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function clean(list) {
-  return [...new Set(list.filter(isValid))];
+function uniqueValidRecipients(raw) {
+  const list = String(raw || "")
+    .split(/\n|,/)
+    .map(v => v.trim())
+    .filter(Boolean)
+    .filter(isValidEmail);
+
+  return [...new Set(list)];
 }
 
-// ===== LIMIT =====
-const limits = {};
-
-function checkLimit(email, total) {
-  const now = Date.now();
-
-  if (!limits[email]) {
-    limits[email] = { count: 0, start: now };
-  }
-
-  if ((now - limits[email].start) > 3600000) {
-    limits[email] = { count: 0, start: now };
-  }
-
-  // moderate safe limit
-  if (limits[email].count + total > 28) return false;
-
-  limits[email].count += total;
-  return true;
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-// ===== DELAY =====
-const delay = ms => new Promise(r => setTimeout(r, ms));
+function formatHtmlMessage(message) {
+  return escapeHtml(message).replace(/\n/g, "<br>");
+}
 
-// ===== SPEED CONFIG (FAST + SAFE) =====
-const BATCH_SIZE = 3;
-const PARALLEL = 2;
-const BASE_DELAY = 250;
-const LONG_PAUSE = 10;
+function normalizeSenderName(name) {
+  return String(name || "").replace(/"/g, "").trim();
+}
 
-// ===== TRANSPORT =====
-function transporter(email, pass) {
+function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 10000,
-    auth: { user: email, pass }
+    auth: {
+      user: email,
+      pass: password
+    }
   });
 }
 
-// ===== SEND =====
 app.post("/send", async (req, res) => {
   try {
-    const { email, password, subject, message, recipients } = req.body;
+    const { senderName, email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ status: "error" });
+      return res.json({ status: "error", message: "Missing required fields" });
     }
 
-    if (!isValid(email)) {
-      return res.json({ status: "error" });
+    if (!isValidEmail(email)) {
+      return res.json({ status: "error", message: "Invalid sender email" });
     }
 
-    let list = clean(recipients.split(/\n|,/).map(e => e.trim()));
+    const recipientList = uniqueValidRecipients(recipients);
 
-    if (!checkLimit(email, list.length)) {
-      return res.json({ status: "limit" });
+    if (recipientList.length === 0) {
+      return res.json({ status: "error", message: "No valid recipients found" });
     }
 
-    const t = transporter(email, password);
+    const transporter = createTransporter(email, password);
 
     try {
-      await t.verify();
+      await transporter.verify();
     } catch {
       return res.json({ status: "auth_error" });
     }
 
+    const cleanSenderName = normalizeSenderName(senderName);
+    const fromField = cleanSenderName ? `"${cleanSenderName}" <${email}>` : email;
+
     let sent = 0;
+    const safeSubject = String(subject || "").trim();
+    const safeText = String(message || "");
+    const safeHtml = formatHtmlMessage(safeText);
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (const to of recipientList) {
+      try {
+        await transporter.sendMail({
+          from: fromField,
+          to,
+          subject: safeSubject,
+          text: safeText,
+          html: `<div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;">${safeHtml}</div>`
+        });
 
-      for (let j = 0; j < batch.length; j += PARALLEL) {
-        const group = batch.slice(j, j + PARALLEL);
-
-        await Promise.all(
-          group.map(async (to) => {
-            try {
-              await t.sendMail({
-                from: email, // ✅ no sender name
-                to,
-                subject: getSubject(subject),
-                text: message,
-                html: `<div style="font-family:Arial">${format(message)}</div>`
-              });
-
-              sent++;
-            } catch {}
-          })
-        );
-      }
-
-      // small delay
-      await delay(BASE_DELAY);
-
-      // safety pause
-      if (sent % LONG_PAUSE === 0) {
-        await delay(1200 + Math.random() * 800);
+        sent++;
+      } catch (err) {
+        console.log(`Send failed for ${to}:`, err.message);
       }
     }
 
-    res.json({ status: "success", sent });
-
-  } catch {
-    res.json({ status: "error" });
+    return res.json({
+      status: "success",
+      sent
+    });
+  } catch (err) {
+    console.log("Server error:", err.message);
+    return res.json({ status: "error", message: "Server error" });
   }
 });
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
