@@ -7,9 +7,10 @@ async function send() {
   try {
     const res = await fetch("/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
-        senderName: name.value,
         email: email.value,
         password: pass.value,
         subject: subject.value,
@@ -36,8 +37,4 @@ async function send() {
 
   btn.innerText = "Send All";
   btn.disabled = false;
-}
-
-function logout() {
-  window.location = "login.html";
 }
