@@ -59,9 +59,9 @@ function checkLimit(email, total) {
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
-const DAILY_LIMIT = 500;
+const BATCH_SIZE = 3;
+const BATCH_DELAY = 500;
+const DAILY_LIMIT = 9682;
 
 // ===== TRANSPORT (POOL ENABLED) =====
 function createTransporter(email, password) {
