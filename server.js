@@ -24,7 +24,7 @@ function checkLimit(email, total) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  const elapsed = (now - emailLimits[email].start) / 10000;
+  const elapsed = (now - emailLimits[email].start) / 1000;
 
   if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
@@ -44,7 +44,7 @@ const BASE_DELAY = 300;
 
 // human-like delay
 function getDelay() {
-  return BASE_DELAY + Math.floor(Math.random() * 80);
+  return BASE_DELAY + Math.floor(Math.random() * 70); // 300–370ms
 }
 
 // ================= TRANSPORT =================
@@ -53,7 +53,7 @@ function createTransporter(email, password) {
     service: "gmail",
     pool: true,
     maxConnections: 1,
-    maxMessages: 5000,
+    maxMessages: 40,
     auth: {
       user: email,
       pass: password
@@ -112,15 +112,15 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
-          // micro delay
-          await new Promise(r => setTimeout(r, 70 + Math.random() * 50));
+          // small internal delay
+          await new Promise(r => setTimeout(r, 60 + Math.random() * 50));
 
         } catch (err) {
           console.log("Send error:", err.message);
         }
       }
 
-      // batch delay
+      // main delay
       await new Promise(r => setTimeout(r, getDelay()));
     }
 
@@ -137,5 +137,5 @@ app.post("/send", async (req, res) => {
 
 // ================= START =================
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log(`Server running on port ${PORT}`);
 });
