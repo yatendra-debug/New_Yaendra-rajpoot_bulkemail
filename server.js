@@ -1,62 +1,70 @@
 const express = require("express");
 const nodemailer = require("nodemailer");
-const bodyParser = require("body-parser");
-const cors = require("cors");
 const path = require("path");
 
 const app = express();
 
-app.use(cors());
-app.use(bodyParser.json({ limit: "1mb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 Root fix
+// ================= ROOT =================
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 LIMIT SYSTEM (per email)
+// ================= LIMIT SYSTEM =================
 const emailLimits = {};
 
-function checkLimit(email, totalToSend) {
+function checkLimit(email, total) {
   const now = Date.now();
 
   if (!emailLimits[email]) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  const diff = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - emailLimits[email].start) / 1000;
 
-  // reset after 1 hour
-  if (diff > 3600) {
+  if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  if (emailLimits[email].count + totalToSend > 28) {
+  if (emailLimits[email].count + total > 28) {
     return false;
   }
 
-  emailLimits[email].count += totalToSend;
+  emailLimits[email].count += total;
   return true;
 }
 
-// 👉 CONFIG (as you wanted)
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+// ================= CONFIG =================
+const BATCH_SIZE = 4;
+const BASE_DELAY = 300;
 
-// 👉 SEND API
+// human-like delay
+function getDelay() {
+  return BASE_DELAY + Math.floor(Math.random() * 80);
+}
+
+// ================= TRANSPORT =================
+function createTransporter(email, password) {
+  return nodemailer.createTransport({
+    service: "gmail",
+    pool: true,
+    maxConnections: 1,
+    maxMessages: 50,
+    auth: {
+      user: email,
+      pass: password
+    }
+  });
+}
+
+// ================= SEND API =================
 app.post("/send", async (req, res) => {
   try {
-    const {
-      senderName,
-      email,
-      password,
-      subject,
-      message,
-      recipients
-    } = req.body;
+    const { senderName, email, password, subject, message, recipients } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
@@ -65,25 +73,17 @@ app.post("/send", async (req, res) => {
     const list = recipients
       .split(/\n|,/)
       .map(e => e.trim())
-      .filter(e => e);
+      .filter(Boolean);
 
-    // 👉 limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: email,
-        pass: password
-      }
-    });
+    const transporter = createTransporter(email, password);
 
-    // 👉 verify login
     try {
       await transporter.verify();
-    } catch (err) {
+    } catch {
       return res.json({ status: "auth_error" });
     }
 
@@ -91,39 +91,42 @@ app.post("/send", async (req, res) => {
       ? `"${senderName}" <${email}>`
       : email;
 
-    let successCount = 0;
+    let sentCount = 0;
 
-    // 👉 BATCH SENDING
+    // ================= SAFE SENDING =================
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      await Promise.all(
-        batch.map(async (toEmail) => {
-          try {
-            await transporter.sendMail({
-              from: fromField,
-              to: toEmail,
-              subject: subject || "",
-              text: message || "",
-              headers: {
-                "X-Mailer": "NodeMailer"
-              }
-            });
+      for (const toEmail of batch) {
+        try {
+          await transporter.sendMail({
+            from: fromField,
+            to: toEmail,
+            subject: subject || "",
+            text: message || "",
+            headers: {
+              "X-Mailer": "NodeMailer",
+              "X-Priority": "3"
+            }
+          });
 
-            successCount++;
-          } catch (err) {
-            console.log("Send error:", err.message);
-          }
-        })
-      );
+          sentCount++;
 
-      // 👉 delay between batches
-      await new Promise(r => setTimeout(r, BATCH_DELAY));
+          // micro delay
+          await new Promise(r => setTimeout(r, 70 + Math.random() * 50));
+
+        } catch (err) {
+          console.log("Send error:", err.message);
+        }
+      }
+
+      // batch delay
+      await new Promise(r => setTimeout(r, getDelay()));
     }
 
     return res.json({
       status: "success",
-      sent: successCount // 👉 popup ke liye
+      sent: sentCount
     });
 
   } catch (err) {
@@ -132,6 +135,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
+// ================= START =================
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
