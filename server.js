@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8982;
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
@@ -56,7 +56,7 @@ function delay(ms) {
 }
 
 function humanDelay() {
-  return 300 + Math.floor(Math.random() * 300); // 310–320ms
+  return 250 + Math.floor(Math.random() * 250); // 250–260ms
 }
 
 // ===== TRANSPORT =====
