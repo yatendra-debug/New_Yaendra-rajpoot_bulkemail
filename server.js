@@ -42,7 +42,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 20) {
+  if (limits[email].count + total > 28) {
     return false;
   }
 
