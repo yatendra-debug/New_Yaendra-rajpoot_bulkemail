@@ -41,13 +41,13 @@ function checkLimit(email, total) {
   return true;
 }
 
-// SAFE CONFIG
-const BATCH_SIZE = 2;
+// YOUR CONFIG
+const BATCH_SIZE = 4;
 const BATCH_DELAY = 400;
 
-// human-like delay
-function getDelay() {
-  return BATCH_DELAY + Math.floor(Math.random() * 150); // 400–550ms
+// random delay (human-like)
+function randomDelay() {
+  return BATCH_DELAY + Math.floor(Math.random() * 120);
 }
 
 // transporter
@@ -95,7 +95,7 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // SAFE SENDING (staggered)
+    // SAFE STAGGERED BATCH
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
@@ -114,8 +114,8 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
-          // small delay inside batch
-          await new Promise(r => setTimeout(r, 120 + Math.random() * 100));
+          // micro delay inside batch
+          await new Promise(r => setTimeout(r, 100 + Math.random() * 80));
 
         } catch (err) {
           console.log("Send error:", err.message);
@@ -123,7 +123,7 @@ app.post("/send", async (req, res) => {
       }
 
       // main delay
-      await new Promise(r => setTimeout(r, getDelay()));
+      await new Promise(r => setTimeout(r, randomDelay()));
     }
 
     return res.json({
