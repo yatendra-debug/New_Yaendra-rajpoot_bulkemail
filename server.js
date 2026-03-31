@@ -52,6 +52,9 @@ function checkLimit(email, total) {
 
 // ===== DELAY =====
 function delay(ms) {
+  const BATCH_DELAY = 300;
+
+const DAILY_LIMIT = 500;
   return new Promise(r => setTimeout(r, ms));
 }
 
