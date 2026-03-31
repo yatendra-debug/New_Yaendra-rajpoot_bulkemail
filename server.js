@@ -54,8 +54,8 @@ function delay(ms) {
 
 // ===== BATCH CONFIG =====
 const BATCH_SIZE = 3;
-const BATCH_DELAY = 300;
-const DAILY_LIMIT = 500;
+const BATCH_DELAY = 275;
+const DAILY_LIMIT = 350;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
