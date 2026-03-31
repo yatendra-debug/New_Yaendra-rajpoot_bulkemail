@@ -13,25 +13,29 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== SAFE SUBJECT LIST =====
+// ===== SENDER NAMES =====
+const names = [
+"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
+"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora"
+];
+
+const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ===== SAFE SUBJECTS =====
 const subjects = [
-  "Hello",
-  "Quick update",
-  "Small update",
-  "Just checking",
-  "Update",
-  "Information",
-  "Note",
-  "Quick note",
-  "Simple update",
-  "Message"
+"Hello",
+"Quick update",
+"Small update",
+"Just checking",
+"Update",
+"Information",
+"Note",
+"Simple message"
 ];
 
 function getSubject(userSub) {
-  if (userSub && userSub.trim() !== "") {
-    return userSub.trim();
-  }
-  return subjects[Math.floor(Math.random() * subjects.length)];
+  if (userSub && userSub.trim() !== "") return userSub.trim();
+  return rand(subjects);
 }
 
 // ===== FORMAT =====
@@ -65,28 +69,26 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 25) return false;
+  // SAFE LIMIT
+  if (limits[email].count + total > 20) return false;
 
   limits[email].count += total;
   return true;
 }
 
 // ===== DELAY =====
-const delay = ms => new Promise(r => setTimeout(r, ms));
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ===== SPEED =====
-const BATCH_SIZE = 4;
-const PARALLEL = 2;
-const BASE_DELAY = 300;
-const LONG_PAUSE = 12;
+// ===== SPEED (SAFE BALANCE) =====
+const BATCH_SIZE = 3;      // safer than 5
+const PARALLEL = 1;        // sequential = safest
+const BASE_DELAY = 700;    // slower = better inbox
+const LONG_PAUSE = 10;     // pause every 10 mails
 
 // ===== TRANSPORT =====
 function transporter(email, pass) {
   return nodemailer.createTransport({
     service: "gmail",
-    pool: true,
-    maxConnections: 3,
-    maxMessages: 80,
     auth: { user: email, pass }
   });
 }
@@ -120,35 +122,32 @@ app.post("/send", async (req, res) => {
 
     let sent = 0;
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < list.length; i++) {
+      const to = list[i];
 
-      for (let j = 0; j < batch.length; j += PARALLEL) {
-        const group = batch.slice(j, j + PARALLEL);
+      try {
+        const html = format(message);
 
-        await Promise.all(
-          group.map(async (to) => {
-            try {
-              const html = format(message);
+        await t.sendMail({
+          from: `"${rand(names)}" <${email}>`,
+          to,
+          subject: getSubject(subject),
+          text: message,
+          html: `<div style="font-family:Arial">${html}</div>`
+        });
 
-              await t.sendMail({
-                from: email,
-                to,
-                subject: getSubject(subject),
-                text: message,
-                html: `<div style="font-family:Arial">${html}</div>`
-              });
+        sent++;
 
-              sent++;
-            } catch {}
-          })
-        );
-      }
+        // normal delay
+        await delay(BASE_DELAY + Math.random() * 400);
 
-      await delay(BASE_DELAY);
+        // long pause (important)
+        if (sent % LONG_PAUSE === 0) {
+          await delay(2000 + Math.random() * 2000);
+        }
 
-      if (sent % LONG_PAUSE === 0) {
-        await delay(1500 + Math.random() * 1000);
+      } catch (e) {
+        console.log("Fail:", to);
       }
     }
 
@@ -159,6 +158,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
+// ===== START =====
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
