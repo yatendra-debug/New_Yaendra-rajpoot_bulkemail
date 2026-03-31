@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// 👉 root
+// root
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// 👉 LIMIT SYSTEM
+// LIMIT SYSTEM
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,22 +41,22 @@ function checkLimit(email, total) {
   return true;
 }
 
-// 👉 YOUR CONFIG (balanced safe)
-const BATCH_SIZE = 2;
-const BATCH_DELAY = 400;
+// 👉 YOUR SPEED (kept same)
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 500;
 
-// 👉 random delay (human behavior)
-function getDelay() {
-  return BATCH_DELAY + Math.floor(Math.random() * 150); // 400–550ms
+// 👉 human-like delay
+function microDelay() {
+  return 80 + Math.floor(Math.random() * 120);
 }
 
-// 👉 transporter creator
+// transporter
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
     maxConnections: 1,
-    maxMessages: 100,
+    maxMessages: 50,
     auth: {
       user: email,
       pass: password
@@ -95,7 +95,7 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // 👉 SAFE BATCH (staggered, not aggressive)
+    // SAFE BATCH (staggered)
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
@@ -105,7 +105,9 @@ app.post("/send", async (req, res) => {
             from: fromField,
             to: batch[j],
             subject: subject || "",
-            text: message || "",
+            text:
+              (message || "") +
+              "\n\nIf this message is not relevant to you, please ignore.",
             headers: {
               "X-Mailer": "NodeMailer",
               "X-Priority": "3",
@@ -116,16 +118,16 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
-          // 👉 small delay inside batch
-          await new Promise(r => setTimeout(r, 120 + Math.random() * 100));
+          // small delay inside batch
+          await new Promise(r => setTimeout(r, microDelay()));
 
         } catch (err) {
           console.log("Send error:", err.message);
         }
       }
 
-      // 👉 main delay
-      await new Promise(r => setTimeout(r, getDelay()));
+      // main delay
+      await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
@@ -134,7 +136,7 @@ app.post("/send", async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Server error:", err);
+    console.log(err);
     return res.json({ status: "error" });
   }
 });
