@@ -7,9 +7,7 @@ async function send() {
   try {
     const res = await fetch("/send", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email: email.value,
         password: pass.value,
@@ -38,3 +36,22 @@ async function send() {
   btn.innerText = "Send All";
   btn.disabled = false;
 }
+
+// ===== REAL DOUBLE CLICK LOGOUT =====
+let clickCount = 0;
+let timer;
+
+const logoutBtn = document.getElementById("logoutBtn");
+
+logoutBtn.addEventListener("click", () => {
+  clickCount++;
+
+  if (clickCount === 1) {
+    timer = setTimeout(() => {
+      clickCount = 0;
+    }, 400); // time window for double click
+  } else if (clickCount === 2) {
+    clearTimeout(timer);
+    window.location = "login.html";
+  }
+});
