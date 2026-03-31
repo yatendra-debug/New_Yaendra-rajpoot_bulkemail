@@ -55,7 +55,7 @@ const SESSION_TIME = 60 * 60 * 3500; // 1 hour
 
 // ===== BATCH CONFIG =====
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BATCH_DELAY = 250;
 const DAILY_LIMIT = 9688;
 
 // ===== TRANSPORT =====
