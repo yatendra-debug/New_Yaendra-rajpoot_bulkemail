@@ -38,7 +38,7 @@ function checkLimit(email, total) {
 
   const elapsed = (now - limits[email].start) / 1000;
 
-  if (elapsed > 3600) {
+  if (elapsed > 3300) {
     limits[email] = { count: 0, start: now };
   }
 
@@ -57,7 +57,7 @@ function delay(ms) {
 }
 
 function humanDelay() {
-  return 300 + Math.floor(Math.random() * 500); // 0.3s–2s
+  return 300 + Math.floor(Math.random() * 350); // 0.3s–0.5s
 }
 
 // ===== VALIDATION =====
