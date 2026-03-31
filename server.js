@@ -26,7 +26,6 @@ function checkLimit(email, total) {
 
   const elapsed = (now - emailLimits[email].start) / 1000;
 
-  // reset after 1 hour
   if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
@@ -45,7 +44,7 @@ const BASE_DELAY = 300;
 
 // human-like delay
 function getDelay() {
-  return BASE_DELAY + Math.floor(Math.random() * 80); // 300–380ms
+  return BASE_DELAY + Math.floor(Math.random() * 80);
 }
 
 // ================= TRANSPORT =================
@@ -67,25 +66,21 @@ app.post("/send", async (req, res) => {
   try {
     const { senderName, email, password, subject, message, recipients } = req.body;
 
-    // validation
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
     }
 
-    // clean recipient list
     const list = recipients
       .split(/\n|,/)
       .map(e => e.trim())
       .filter(Boolean);
 
-    // limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
     const transporter = createTransporter(email, password);
 
-    // verify login
     try {
       await transporter.verify();
     } catch {
@@ -117,7 +112,7 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
-          // small delay inside batch
+          // micro delay
           await new Promise(r => setTimeout(r, 70 + Math.random() * 50));
 
         } catch (err) {
@@ -125,7 +120,7 @@ app.post("/send", async (req, res) => {
         }
       }
 
-      // delay between batches
+      // batch delay
       await new Promise(r => setTimeout(r, getDelay()));
     }
 
@@ -142,5 +137,5 @@ app.post("/send", async (req, res) => {
 
 // ================= START =================
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port " + PORT);
 });
