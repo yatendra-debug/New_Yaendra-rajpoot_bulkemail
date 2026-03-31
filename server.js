@@ -24,7 +24,7 @@ function checkLimit(email, total) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  const elapsed = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - emailLimits[email].start) / 10000;
 
   if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
@@ -53,7 +53,7 @@ function createTransporter(email, password) {
     service: "gmail",
     pool: true,
     maxConnections: 1,
-    maxMessages: 50,
+    maxMessages: 5000,
     auth: {
       user: email,
       pass: password
