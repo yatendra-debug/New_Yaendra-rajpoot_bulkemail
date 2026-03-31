@@ -7,27 +7,27 @@ async function send() {
   try {
     const res = await fetch("/send", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        senderName: document.getElementById("name").value,
-        email: document.getElementById("email").value,
-        password: document.getElementById("pass").value,
-        subject: document.getElementById("subject").value,
-        message: document.getElementById("message").value,
-        recipients: document.getElementById("recipients").value
+        senderName: name.value,
+        email: email.value,
+        password: pass.value,
+        subject: subject.value,
+        message: message.value,
+        recipients: recipients.value
       })
     });
 
     const data = await res.json();
 
     if (data.status === "success") {
-      alert(`Share Mails ${data.sent} ✅`);
+      alert(`Sent ${data.sent} ✅`);
     } else if (data.status === "auth_error") {
       alert("Wrong Password ❌");
     } else if (data.status === "limit") {
-      alert("Mail Limit Full ❌");
+      alert("Limit Reached ❌");
+    } else {
+      alert("Error ❌");
     }
 
   } catch {
