@@ -13,7 +13,7 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== NAME LIST (YOUR PROVIDED) =====
+// ===== NAME LIST =====
 const names = [
 "Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
 "Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
@@ -21,12 +21,11 @@ const names = [
 "Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail"
 ];
 
-// ===== RANDOM NAME =====
 function getRandomName() {
   return names[Math.floor(Math.random() * names.length)];
 }
 
-// ===== LIMIT SYSTEM =====
+// ===== LIMIT =====
 const limits = {};
 
 function checkLimit(email, total) {
@@ -36,9 +35,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  const elapsed = (now - limits[email].start) / 9882;
-
-  if (elapsed > 3600) {
+  if ((now - limits[email].start) > 3600000) {
     limits[email] = { count: 0, start: now };
   }
 
@@ -52,13 +49,13 @@ function checkLimit(email, total) {
 
 // ===== DELAY =====
 function delay(ms) {
-  
   return new Promise(r => setTimeout(r, ms));
 }
 
-function humanDelay() {
-  return 100 + Math.floor(Math.random() * 100); // 150ms
-}
+// ===== BATCH CONFIG =====
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 300;
+const DAILY_LIMIT = 500;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
@@ -99,28 +96,31 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // ===== SENDING LOOP =====
-    for (const toEmail of list) {
-      try {
+    // ===== BATCH SENDING =====
+    for (let i = 0; i < list.length; i += BATCH_SIZE) {
+      const batch = list.slice(i, i + BATCH_SIZE);
 
-        const randomName = getRandomName();
+      for (const toEmail of batch) {
+        try {
+          const randomName = getRandomName();
 
-        await transporter.sendMail({
-          from: `"${randomName}" <${email}>`,
-          to: toEmail,
-          subject: subject || "",
-          text: message || "",
-          html: `<p>${message}</p>`
-        });
+          await transporter.sendMail({
+            from: `"${randomName}" <${email}>`,
+            to: toEmail,
+            subject: subject || "",
+            text: message || "",
+            html: `<p>${message}</p>`
+          });
 
-        sentCount++;
+          sentCount++;
 
-        // human delay
-        await delay(humanDelay());
-
-      } catch (err) {
-        console.log("Send error:", err.message);
+        } catch (err) {
+          console.log("Send error:", err.message);
+        }
       }
+
+      // batch delay
+      await delay(BATCH_DELAY);
     }
 
     return res.json({
