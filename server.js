@@ -3,10 +3,10 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use(express.static("public"));
 
-const PORT = process.env.PORT || 89829;
+const PORT = process.env.PORT || 58488;
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
@@ -45,7 +45,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if ((now - limits[email].start) > 3600000) {
+  if ((now - limits[email].start) > 3600584) {
     limits[email] = { count: 0, start: now };
   }
 
@@ -59,22 +59,32 @@ function checkLimit(email, total) {
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 3;
+const BATCH_SIZE = 4;
 const BATCH_DELAY = 500;
-const DAILY_LIMIT = 9682;
 
-// ===== TRANSPORT (POOL ENABLED) =====
+// ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 3,     // parallel connections
-    maxMessages: 100,
+    maxConnections: 5,
+    maxMessages: 185878,
     auth: {
       user: email,
       pass: password
     }
   });
+}
+
+// ===== FORMAT PRESERVE FUNCTION =====
+function formatMessage(msg) {
+  if (!msg) return "";
+
+  return msg
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>"); // 👈 line preserve
 }
 
 // ===== SEND API =====
@@ -111,6 +121,8 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
+    const htmlMessage = formatMessage(message);
+
     // ===== PARALLEL BATCH =====
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
@@ -124,7 +136,7 @@ app.post("/send", async (req, res) => {
             to: toEmail,
             subject: subject || "",
             text: message || "",
-            html: `<div style="font-family:Arial">${message || ""}</div>`
+            html: `<div style="font-family:Arial;line-height:1.6;">${htmlMessage}</div>`
           });
 
           sentCount++;
@@ -134,10 +146,7 @@ app.post("/send", async (req, res) => {
         }
       });
 
-      // run all at once
       await Promise.all(promises);
-
-      // batch delay
       await delay(BATCH_DELAY);
     }
 
