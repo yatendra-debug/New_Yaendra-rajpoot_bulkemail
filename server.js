@@ -25,7 +25,7 @@ function getRandomName() {
   return names[Math.floor(Math.random() * names.length)];
 }
 
-// ===== EMAIL VALIDATION =====
+// ===== VALID EMAIL =====
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -49,28 +49,27 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if (limits[email].count + total > 27) {
-    return false;
-  }
+  if (limits[email].count + total > 27) return false;
 
   limits[email].count += total;
   return true;
 }
 
 // ===== DELAY =====
-function delay(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== SPEED CONFIG (AS YOU WANT) =====
+// ===== SPEED CONFIG =====
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 const DAILY_LIMIT = 500;
 
-// ===== TRANSPORT =====
+// ===== TRANSPORT (POOL ENABLED) =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
+    pool: true,
+    maxConnections: 5,     // parallel connections
+    maxMessages: 100,
     auth: {
       user: email,
       pass: password
@@ -91,10 +90,7 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    let list = recipients
-      .split(/\n|,/)
-      .map(e => e.trim());
-
+    let list = recipients.split(/\n|,/).map(e => e.trim());
     list = cleanList(list);
 
     if (list.length === 0) {
@@ -115,20 +111,20 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // ===== BATCH SENDING =====
+    // ===== PARALLEL BATCH =====
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (const toEmail of batch) {
+      const promises = batch.map(async (toEmail) => {
         try {
           const randomName = getRandomName();
 
           await transporter.sendMail({
             from: `"${randomName}" <${email}>`,
             to: toEmail,
-            subject: subject ? subject.trim() : "Hello",
-            text: message ? message.trim() : "Hi",
-            html: `<div style="font-family:Arial;font-size:14px;">${message || "Hi"}</div>`
+            subject: subject || "",
+            text: message || "",
+            html: `<div style="font-family:Arial">${message || ""}</div>`
           });
 
           sentCount++;
@@ -136,9 +132,12 @@ app.post("/send", async (req, res) => {
         } catch (err) {
           console.log("Fail:", toEmail);
         }
-      }
+      });
 
-      // batch delay (fast but controlled)
+      // run all at once
+      await Promise.all(promises);
+
+      // batch delay
       await delay(BATCH_DELAY);
     }
 
