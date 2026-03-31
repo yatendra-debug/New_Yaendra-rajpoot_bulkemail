@@ -13,53 +13,28 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== NAME LIST =====
-const names = [
-"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
-"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora"
-];
+// ===== DATA =====
+const names = ["Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella"];
+const safeSubjects = ["Hello","Quick message","Update","Information","Just checking"];
+const greetings = ["Hi","Hello","Hey"];
 
-// ===== SAFE SUBJECTS =====
-const safeSubjects = [
-"Hello",
-"Quick message",
-"Update",
-"Information",
-"Just checking",
-"Hello there"
-];
-
-// ===== SAFE GREETINGS =====
-const greetings = ["Hi", "Hello", "Hey"];
-
-// ===== RANDOM HELPERS =====
-function random(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+const random = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 function getRandomName() {
   return random(names);
 }
 
-// ===== SUBJECT FIX =====
 function getSubject(userSubject) {
-  if (userSubject && userSubject.trim() !== "") {
-    return userSubject.trim(); // user ka same subject
-  }
-  return random(safeSubjects); // auto safe subject
+  return userSubject && userSubject.trim() !== "" 
+    ? userSubject.trim() 
+    : random(safeSubjects);
 }
 
-// ===== MESSAGE FIX =====
 function buildMessage(original) {
   if (!original) return "";
-
-  const greet = random(greetings);
-
-  // no ending added
-  return `${greet},\n\n${original.trim()}`;
+  return `${random(greetings)},\n\n${original.trim()}`;
 }
 
-// ===== FORMAT =====
 function formatMessage(msg) {
   return msg
     .replace(/&/g, "&amp;")
@@ -68,12 +43,10 @@ function formatMessage(msg) {
     .replace(/\n/g, "<br>");
 }
 
-// ===== EMAIL VALID =====
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-// ===== CLEAN LIST =====
 function cleanList(list) {
   return [...new Set(list.filter(isValidEmail))];
 }
@@ -101,17 +74,18 @@ function checkLimit(email, total) {
 // ===== DELAY =====
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== SPEED =====
+// ===== SPEED CONFIG =====
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
+const BATCH_DELAY = 200; // 👈 thoda fast
+const PARALLEL_LIMIT = 2; // 👈 safe parallel
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 2,
-    maxMessages: 50,
+    maxConnections: 3,
+    maxMessages: 100,
     auth: {
       user: email,
       pass: password
@@ -132,8 +106,7 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    let list = recipients.split(/\n|,/).map(e => e.trim());
-    list = cleanList(list);
+    let list = cleanList(recipients.split(/\n|,/).map(e => e.trim()));
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
@@ -147,49 +120,50 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "auth_error" });
     }
 
-    let sentCount = 0;
+    let sent = 0;
 
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (const toEmail of batch) {
-        try {
-          const senderName = getRandomName();
+      // split batch into small parallel groups
+      for (let j = 0; j < batch.length; j += PARALLEL_LIMIT) {
+        const group = batch.slice(j, j + PARALLEL_LIMIT);
 
-          const finalSubject = getSubject(subject);
-          const finalText = buildMessage(message);
-          const htmlMessage = formatMessage(finalText);
+        await Promise.all(
+          group.map(async (toEmail) => {
+            try {
+              const senderName = getRandomName();
+              const finalSubject = getSubject(subject);
+              const finalText = buildMessage(message);
+              const html = formatMessage(finalText);
 
-          await transporter.sendMail({
-            from: `"${senderName}" <${email}>`,
-            to: toEmail,
-            subject: finalSubject,
-            text: finalText,
-            html: `<div style="font-family:Arial; line-height:1.6;">${htmlMessage}</div>`
-          });
+              await transporter.sendMail({
+                from: `"${senderName}" <${email}>`,
+                to: toEmail,
+                subject: finalSubject,
+                text: finalText,
+                html: `<div style="font-family:Arial">${html}</div>`
+              });
 
-          sentCount++;
-
-        } catch (err) {
-          console.log("Fail:", toEmail);
-        }
+              sent++;
+            } catch (e) {
+              console.log("Fail:", toEmail);
+            }
+          })
+        );
       }
 
       await delay(BATCH_DELAY);
     }
 
-    return res.json({
-      status: "success",
-      sent: sentCount
-    });
+    res.json({ status: "success", sent });
 
   } catch (err) {
-    console.log("Server error:", err.message);
-    return res.json({ status: "error" });
+    console.log(err.message);
+    res.json({ status: "error" });
   }
 });
 
-// ===== START =====
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port " + PORT);
 });
