@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root
+// 👉 root route
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// LIMIT SYSTEM
+// 👉 LIMIT SYSTEM (per email)
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -27,9 +27,10 @@ function checkLimit(email, total) {
     emailLimits[email] = { count: 0, start: now };
   }
 
-  const diff = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - emailLimits[email].start) / 1000;
 
-  if (diff > 3600) {
+  // reset after 1 hour
+  if (elapsed > 3600) {
     emailLimits[email] = { count: 0, start: now };
   }
 
@@ -41,22 +42,20 @@ function checkLimit(email, total) {
   return true;
 }
 
-// 👉 YOUR SPEED (kept same)
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 500;
+// 👉 SAFE CONFIG (no aggressive behavior)
+const BASE_DELAY = 600; // safe baseline
 
-// 👉 human-like delay
-function microDelay() {
-  return 80 + Math.floor(Math.random() * 120);
+function getDelay() {
+  return BASE_DELAY + Math.floor(Math.random() * 300); // 600–900ms
 }
 
-// transporter
+// 👉 transporter (stable + safe)
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
     maxConnections: 1,
-    maxMessages: 50,
+    maxMessages: 30,
     auth: {
       user: email,
       pass: password
@@ -64,25 +63,36 @@ function createTransporter(email, password) {
   });
 }
 
+// 👉 SEND API
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, email, password, subject, message, recipients } = req.body;
+    const {
+      senderName,
+      email,
+      password,
+      subject,
+      message,
+      recipients
+    } = req.body;
 
     if (!email || !password || !recipients) {
       return res.json({ status: "error" });
     }
 
+    // 👉 clean recipient list
     const list = recipients
       .split(/\n|,/)
       .map(e => e.trim())
       .filter(e => e);
 
+    // 👉 limit check
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
     const transporter = createTransporter(email, password);
 
+    // 👉 verify login
     try {
       await transporter.verify();
     } catch {
@@ -95,39 +105,31 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // SAFE BATCH (staggered)
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    // 👉 SAFE ONE-BY-ONE SENDING
+    for (let i = 0; i < list.length; i++) {
+      try {
+        await transporter.sendMail({
+          from: fromField,
+          to: list[i],
+          subject: subject || "",
+          text:
+            (message || "") +
+            "\n\nIf this message is not relevant to you, please ignore.",
+          headers: {
+            "X-Mailer": "NodeMailer",
+            "X-Priority": "3",
+            "List-Unsubscribe": `<mailto:${email}>`
+          }
+        });
 
-      for (let j = 0; j < batch.length; j++) {
-        try {
-          await transporter.sendMail({
-            from: fromField,
-            to: batch[j],
-            subject: subject || "",
-            text:
-              (message || "") +
-              "\n\nIf this message is not relevant to you, please ignore.",
-            headers: {
-              "X-Mailer": "NodeMailer",
-              "X-Priority": "3",
-              "Precedence": "bulk",
-              "List-Unsubscribe": `<mailto:${email}>`
-            }
-          });
+        sentCount++;
 
-          sentCount++;
+        // 👉 human delay (IMPORTANT)
+        await new Promise(r => setTimeout(r, getDelay()));
 
-          // small delay inside batch
-          await new Promise(r => setTimeout(r, microDelay()));
-
-        } catch (err) {
-          console.log("Send error:", err.message);
-        }
+      } catch (err) {
+        console.log("Send error:", err.message);
       }
-
-      // main delay
-      await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
@@ -136,7 +138,7 @@ app.post("/send", async (req, res) => {
     });
 
   } catch (err) {
-    console.log(err);
+    console.log("Server error:", err);
     return res.json({ status: "error" });
   }
 });
