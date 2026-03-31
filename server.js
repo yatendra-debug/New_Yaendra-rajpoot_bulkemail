@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
-const PORT = process.env.PORT || 8982;
+const PORT = process.env.PORT || 89829;
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
@@ -53,9 +53,9 @@ function delay(ms) {
 }
 
 // ===== BATCH CONFIG =====
-const BATCH_SIZE = 3;
-const BATCH_DELAY = 275;
-const DAILY_LIMIT = 350;
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 300;
+const DAILY_LIMIT = 400;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
