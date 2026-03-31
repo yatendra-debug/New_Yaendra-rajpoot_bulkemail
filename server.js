@@ -13,29 +13,68 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== DATA =====
-const names = ["Olivia","Emma","Amelia","Charlotte","Mia","Sophia"];
-const subjects = ["Hello","Quick update","Info","Checking in"];
-const greetings = ["Hi","Hello","Hey"];
+// ===== SAFE WORD POOLS =====
+const words1 = ["hello","quick","simple","short","small","basic","info","note","update","check"];
+const words2 = ["message","update","info","details","note","request","check","info","message"];
+const words3 = ["for","about","regarding","on"];
+const words4 = ["you","this","it"];
+const words5 = ["today","now","here"];
 
-const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const greetings = ["Hi", "Hello", "Hey"];
+const names = ["Olivia","Emma","Amelia","Mia","Sophia","Ava"];
 
-function getName() {
-  return rand(names);
+// ===== HELPERS =====
+const rand = arr => arr[Math.floor(Math.random() * arr.length)];
+
+// ===== SAFE SUBJECT GENERATOR (1–5 WORDS) =====
+function generateSubject() {
+  const len = Math.floor(Math.random() * 5) + 1;
+
+  let subject = [];
+
+  if (len >= 1) subject.push(rand(words1));
+  if (len >= 2) subject.push(rand(words2));
+  if (len >= 3) subject.push(rand(words3));
+  if (len >= 4) subject.push(rand(words4));
+  if (len >= 5) subject.push(rand(words5));
+
+  return subject.join(" ");
 }
 
+// ===== SUBJECT LOGIC =====
 function getSubject(userSub) {
-  return userSub && userSub.trim() !== "" ? userSub : rand(subjects);
+  if (userSub && userSub.trim() !== "") {
+    return userSub.trim();
+  }
+  return generateSubject();
 }
 
-function buildMsg(msg) {
-  return `${rand(greetings)},\n\n${msg}`;
+// ===== MESSAGE BUILDER =====
+function buildMessage(msg) {
+  if (!msg) return "";
+
+  const g = rand(greetings);
+
+  // random format
+  const styles = [
+    `${g},\n\n${msg}`,
+    `${g} \n\n${msg}`,
+    `${g}\n\n${msg}`
+  ];
+
+  return rand(styles);
 }
 
+// ===== FORMAT =====
 function format(msg) {
-  return msg.replace(/\n/g, "<br>");
+  return msg
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/\n/g,"<br>");
 }
 
+// ===== VALID =====
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -66,11 +105,11 @@ function checkLimit(email, total) {
 // ===== DELAY =====
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== SPEED CONFIG =====
-const BATCH_SIZE = 6;          // 👈 slightly faster
-const PARALLEL = 2;           // 👈 safe parallel
-const BASE_DELAY = 150;       // 👈 faster
-const LONG_PAUSE_EVERY = 15;  // 👈 safety break
+// ===== SPEED =====
+const BATCH_SIZE = 6;
+const PARALLEL = 2;
+const BASE_DELAY = 150;
+const LONG_PAUSE = 15;
 
 // ===== TRANSPORT =====
 function transporter(email, pass) {
@@ -121,11 +160,11 @@ app.post("/send", async (req, res) => {
         await Promise.all(
           group.map(async (to) => {
             try {
-              const text = buildMsg(message);
+              const text = buildMessage(message);
               const html = format(text);
 
               await t.sendMail({
-                from: `"${getName()}" <${email}>`,
+                from: `"${rand(names)}" <${email}>`,
                 to,
                 subject: getSubject(subject),
                 text,
@@ -138,18 +177,16 @@ app.post("/send", async (req, res) => {
         );
       }
 
-      // small delay
       await delay(BASE_DELAY);
 
-      // long safety pause
-      if (sent % LONG_PAUSE_EVERY === 0) {
+      if (sent % LONG_PAUSE === 0) {
         await delay(1500 + Math.random() * 1000);
       }
     }
 
     res.json({ status: "success", sent });
 
-  } catch (e) {
+  } catch {
     res.json({ status: "error" });
   }
 });
