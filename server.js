@@ -13,22 +13,34 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== SIMPLE SUBJECT =====
+// ===== YOUR SENDER NAME LIST =====
+const names = [
+"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
+"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
+"Elizabeth","Eliana","Hazel","Chloe","Ellie","Nora","Gianna","Lily",
+"Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail"
+];
+
+function getRandomName() {
+  return names[Math.floor(Math.random() * names.length)];
+}
+
+// ===== SUBJECT =====
 function getSubject(sub) {
   if (sub && sub.trim() !== "") return sub.trim();
-  return "Hello";
+  return "Hello"; // safest fallback
 }
 
 // ===== FORMAT =====
 function format(msg) {
   return msg
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/\n/g,"<br>");
 }
 
-// ===== EMAIL VALID =====
+// ===== VALID =====
 function isValid(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
@@ -37,7 +49,7 @@ function clean(list) {
   return [...new Set(list.filter(isValid))];
 }
 
-// ===== LIMIT =====
+// ===== LIMIT (VERY SAFE) =====
 const limits = {};
 
 function checkLimit(email, total) {
@@ -51,7 +63,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  // SAFE LIMIT
+  // very low limit = safer inbox
   if (limits[email].count + total > 28) return false;
 
   limits[email].count += total;
@@ -65,7 +77,7 @@ function wait(ms) {
 
 // ===== HUMAN DELAY =====
 function humanDelay() {
-  return 1200 + Math.random() * 1500; // 1.2s – 2.7s
+  return 1200 + Math.random() * 1600; // 1.5s – 2.5s
 }
 
 // ===== TRANSPORT =====
@@ -113,7 +125,7 @@ app.post("/send", async (req, res) => {
 
       try {
         await transporter.sendMail({
-          from: email,
+          from: `"${getRandomName()}" <${email}>`,
           to: to,
           subject: getSubject(subject),
           text: message,
@@ -125,9 +137,9 @@ app.post("/send", async (req, res) => {
         // human delay
         await wait(humanDelay());
 
-        // long pause every few mails
-        if (sent % 5 === 0) {
-          await wait(3000 + Math.random() * 2000);
+        // extra pause
+        if (sent % 3 === 0) {
+          await wait(4000 + Math.random() * 3000);
         }
 
       } catch (e) {
@@ -142,7 +154,6 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// ===== START =====
 app.listen(PORT, () => {
   console.log("Server running on port " + PORT);
 });
