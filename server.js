@@ -52,14 +52,12 @@ function checkLimit(email, total) {
 
 // ===== DELAY =====
 function delay(ms) {
-  const BATCH_DELAY = 300;
-
-const DAILY_LIMIT = 500;
+  
   return new Promise(r => setTimeout(r, ms));
 }
 
 function humanDelay() {
-  return 150 + Math.floor(Math.random() * 150); // 160ms
+  return 100 + Math.floor(Math.random() * 100); // 150ms
 }
 
 // ===== TRANSPORT =====
