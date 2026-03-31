@@ -14,46 +14,38 @@ app.get("/", (req, res) => {
 });
 
 // ===== DATA =====
-const names = ["Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella"];
-const safeSubjects = ["Hello","Quick message","Update","Information","Just checking"];
+const names = ["Olivia","Emma","Amelia","Charlotte","Mia","Sophia"];
+const subjects = ["Hello","Quick update","Info","Checking in"];
 const greetings = ["Hi","Hello","Hey"];
 
-const random = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-function getRandomName() {
-  return random(names);
+function getName() {
+  return rand(names);
 }
 
-function getSubject(userSubject) {
-  return userSubject && userSubject.trim() !== "" 
-    ? userSubject.trim() 
-    : random(safeSubjects);
+function getSubject(userSub) {
+  return userSub && userSub.trim() !== "" ? userSub : rand(subjects);
 }
 
-function buildMessage(original) {
-  if (!original) return "";
-  return `${random(greetings)},\n\n${original.trim()}`;
+function buildMsg(msg) {
+  return `${rand(greetings)},\n\n${msg}`;
 }
 
-function formatMessage(msg) {
-  return msg
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>");
+function format(msg) {
+  return msg.replace(/\n/g, "<br>");
 }
 
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function cleanList(list) {
+function clean(list) {
   return [...new Set(list.filter(isValidEmail))];
 }
 
 // ===== LIMIT =====
 const limits = {};
-
 function checkLimit(email, total) {
   const now = Date.now();
 
@@ -75,21 +67,19 @@ function checkLimit(email, total) {
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 200; // 👈 thoda fast
-const PARALLEL_LIMIT = 2; // 👈 safe parallel
+const BATCH_SIZE = 3;          // 👈 slightly faster
+const PARALLEL = 2;           // 👈 safe parallel
+const BASE_DELAY = 250;       // 👈 faster
+const LONG_PAUSE_EVERY = 15;  // 👈 safety break
 
 // ===== TRANSPORT =====
-function createTransporter(email, password) {
+function transporter(email, pass) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 3,
+    maxConnections: 4,
     maxMessages: 100,
-    auth: {
-      user: email,
-      pass: password
-    }
+    auth: { user: email, pass }
   });
 }
 
@@ -106,16 +96,16 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    let list = cleanList(recipients.split(/\n|,/).map(e => e.trim()));
+    let list = clean(recipients.split(/\n|,/).map(e => e.trim()));
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
-    const transporter = createTransporter(email, password);
+    const t = transporter(email, password);
 
     try {
-      await transporter.verify();
+      await t.verify();
     } catch {
       return res.json({ status: "auth_error" });
     }
@@ -125,41 +115,41 @@ app.post("/send", async (req, res) => {
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      // split batch into small parallel groups
-      for (let j = 0; j < batch.length; j += PARALLEL_LIMIT) {
-        const group = batch.slice(j, j + PARALLEL_LIMIT);
+      for (let j = 0; j < batch.length; j += PARALLEL) {
+        const group = batch.slice(j, j + PARALLEL);
 
         await Promise.all(
-          group.map(async (toEmail) => {
+          group.map(async (to) => {
             try {
-              const senderName = getRandomName();
-              const finalSubject = getSubject(subject);
-              const finalText = buildMessage(message);
-              const html = formatMessage(finalText);
+              const text = buildMsg(message);
+              const html = format(text);
 
-              await transporter.sendMail({
-                from: `"${senderName}" <${email}>`,
-                to: toEmail,
-                subject: finalSubject,
-                text: finalText,
+              await t.sendMail({
+                from: `"${getName()}" <${email}>`,
+                to,
+                subject: getSubject(subject),
+                text,
                 html: `<div style="font-family:Arial">${html}</div>`
               });
 
               sent++;
-            } catch (e) {
-              console.log("Fail:", toEmail);
-            }
+            } catch {}
           })
         );
       }
 
-      await delay(BATCH_DELAY);
+      // small delay
+      await delay(BASE_DELAY);
+
+      // long safety pause
+      if (sent % LONG_PAUSE_EVERY === 0) {
+        await delay(1500 + Math.random() * 1000);
+      }
     }
 
     res.json({ status: "success", sent });
 
-  } catch (err) {
-    console.log(err.message);
+  } catch (e) {
     res.json({ status: "error" });
   }
 });
