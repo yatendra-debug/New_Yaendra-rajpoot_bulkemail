@@ -6,7 +6,7 @@ const app = express();
 app.use(express.json({ limit: "2mb" }));
 app.use(express.static("public"));
 
-const PORT = process.env.PORT || 58488;
+const PORT = process.env.PORT || 89829;
 
 // ===== ROOT =====
 app.get("/", (req, res) => {
@@ -45,7 +45,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if ((now - limits[email].start) > 3600584) {
+  if ((now - limits[email].start) > 3600000) {
     limits[email] = { count: 0, start: now };
   }
 
@@ -56,19 +56,30 @@ function checkLimit(email, total) {
 }
 
 // ===== DELAY =====
-const delay = ms => new Promise(r => setTimeout(r, ms));
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+// safer delay (human-like)
+function humanDelay(i) {
+  let base = 600 + Math.random() * 600; // 600–1200ms
+
+  // every 5 emails → longer pause
+  if (i % 5 === 0 && i !== 0) {
+    base += 1500 + Math.random() * 1500;
+  }
+
+  return base;
+}
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 4;
-const BATCH_DELAY = 350;
+const BATCH_SIZE = 3;       // reduced (safe)
+const BATCH_DELAY = 700;    // increased delay
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
-    pool: true,
-    maxConnections: 4,
-    maxMessages: 185878,
     auth: {
       user: email,
       pass: password
@@ -76,7 +87,7 @@ function createTransporter(email, password) {
   });
 }
 
-// ===== FORMAT PRESERVE FUNCTION =====
+// ===== FORMAT PRESERVE =====
 function formatMessage(msg) {
   if (!msg) return "";
 
@@ -84,7 +95,7 @@ function formatMessage(msg) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/\n/g, "<br>"); // 👈 line preserve
+    .replace(/\n/g, "<br>");
 }
 
 // ===== SEND API =====
@@ -120,14 +131,15 @@ app.post("/send", async (req, res) => {
     }
 
     let sentCount = 0;
-
     const htmlMessage = formatMessage(message);
 
-    // ===== PARALLEL BATCH =====
+    // ===== SAFE SEQUENTIAL BATCH =====
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      const promises = batch.map(async (toEmail) => {
+      for (let j = 0; j < batch.length; j++) {
+        const toEmail = batch[j];
+
         try {
           const randomName = getRandomName();
 
@@ -141,12 +153,15 @@ app.post("/send", async (req, res) => {
 
           sentCount++;
 
+          // per mail delay
+          await delay(humanDelay(i + j));
+
         } catch (err) {
           console.log("Fail:", toEmail);
         }
-      });
+      }
 
-      await Promise.all(promises);
+      // batch delay
       await delay(BATCH_DELAY);
     }
 
