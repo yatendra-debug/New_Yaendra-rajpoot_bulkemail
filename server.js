@@ -56,30 +56,19 @@ function checkLimit(email, total) {
 }
 
 // ===== DELAY =====
-function delay(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-// safer delay (human-like)
-function humanDelay(i) {
-  let base = 600 + Math.random() * 600; // 600–1200ms
-
-  // every 5 emails → longer pause
-  if (i % 5 === 0 && i !== 0) {
-    base += 1500 + Math.random() * 1500;
-  }
-
-  return base;
-}
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
-const BATCH_SIZE = 3;       // reduced (safe)
-const BATCH_DELAY = 700;    // increased delay
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 500;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
+    pool: true,
+    maxConnections: 2,   // controlled parallelism (safe)
+    maxMessages: 9876,
     auth: {
       user: email,
       pass: password
@@ -87,7 +76,7 @@ function createTransporter(email, password) {
   });
 }
 
-// ===== FORMAT PRESERVE =====
+// ===== FORMAT MESSAGE (SAFE + CLEAN) =====
 function formatMessage(msg) {
   if (!msg) return "";
 
@@ -133,35 +122,33 @@ app.post("/send", async (req, res) => {
     let sentCount = 0;
     const htmlMessage = formatMessage(message);
 
-    // ===== SAFE SEQUENTIAL BATCH =====
+    // ===== BATCH SENDING =====
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (let j = 0; j < batch.length; j++) {
-        const toEmail = batch[j];
-
+      for (const toEmail of batch) {
         try {
           const randomName = getRandomName();
 
           await transporter.sendMail({
             from: `"${randomName}" <${email}>`,
             to: toEmail,
-            subject: subject || "",
-            text: message || "",
-            html: `<div style="font-family:Arial;line-height:1.6;">${htmlMessage}</div>`
+            subject: subject ? subject.trim() : "Hello",
+            text: message ? message.trim() : "Hi",
+            html: `
+              <div style="font-family:Arial; font-size:14px; line-height:1.6;">
+                ${htmlMessage}
+              </div>
+            `
           });
 
           sentCount++;
-
-          // per mail delay
-          await delay(humanDelay(i + j));
 
         } catch (err) {
           console.log("Fail:", toEmail);
         }
       }
 
-      // batch delay
       await delay(BATCH_DELAY);
     }
 
