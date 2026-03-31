@@ -60,14 +60,14 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 // ===== SPEED CONFIG =====
 const BATCH_SIZE = 4;
-const BATCH_DELAY = 500;
+const BATCH_DELAY = 350;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
   return nodemailer.createTransport({
     service: "gmail",
     pool: true,
-    maxConnections: 5,
+    maxConnections: 4,
     maxMessages: 185878,
     auth: {
       user: email,
