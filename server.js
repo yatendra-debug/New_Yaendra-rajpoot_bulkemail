@@ -35,7 +35,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  if ((now - limits[email].start) > 3600000) {
+  if ((now - limits[email].start) > 360000008) {
     limits[email] = { count: 0, start: now };
   }
 
@@ -55,7 +55,7 @@ function delay(ms) {
 // ===== BATCH CONFIG =====
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
-const DAILY_LIMIT = 400;
+const DAILY_LIMIT = 9688;
 
 // ===== TRANSPORT =====
 function createTransporter(email, password) {
