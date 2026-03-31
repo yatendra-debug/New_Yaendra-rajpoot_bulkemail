@@ -3,7 +3,7 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "1mb" }));
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 89829;
@@ -13,51 +13,33 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== SENDER NAMES =====
-const names = [
-"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
-"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora"
-];
-
-const rand = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-// ===== SAFE SUBJECTS =====
-const subjects = [
-"Hello",
-"Quick update",
-"Small update",
-"Just checking",
-"Update",
-"Information",
-"Note",
-"Simple message"
-];
-
-function getSubject(userSub) {
-  if (userSub && userSub.trim() !== "") return userSub.trim();
-  return rand(subjects);
+// ===== SIMPLE SUBJECT =====
+function getSubject(sub) {
+  if (sub && sub.trim() !== "") return sub.trim();
+  return "Hello";
 }
 
 // ===== FORMAT =====
 function format(msg) {
   return msg
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/\n/g,"<br>");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 }
 
-// ===== VALID =====
-function isValidEmail(email) {
+// ===== EMAIL VALID =====
+function isValid(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function clean(list) {
-  return [...new Set(list.filter(isValidEmail))];
+  return [...new Set(list.filter(isValid))];
 }
 
 // ===== LIMIT =====
 const limits = {};
+
 function checkLimit(email, total) {
   const now = Date.now();
 
@@ -70,26 +52,30 @@ function checkLimit(email, total) {
   }
 
   // SAFE LIMIT
-  if (limits[email].count + total > 27) return false;
+  if (limits[email].count + total > 15) return false;
 
   limits[email].count += total;
   return true;
 }
 
 // ===== DELAY =====
-const delay = (ms) => new Promise(r => setTimeout(r, ms));
+function wait(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
 
-// ===== SPEED (SAFE BALANCE) =====
-const BATCH_SIZE = 3;      // safer than 5
-const PARALLEL = 1;        // sequential = safest
-const BASE_DELAY = 700;    // slower = better inbox
-const LONG_PAUSE = 10;     // pause every 10 mails
+// ===== HUMAN DELAY =====
+function humanDelay() {
+  return 1200 + Math.random() * 1500; // 1.2s – 2.7s
+}
 
 // ===== TRANSPORT =====
-function transporter(email, pass) {
+function createTransport(email, pass) {
   return nodemailer.createTransport({
     service: "gmail",
-    auth: { user: email, pass }
+    auth: {
+      user: email,
+      pass: pass
+    }
   });
 }
 
@@ -102,7 +88,7 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    if (!isValidEmail(email)) {
+    if (!isValid(email)) {
       return res.json({ status: "error" });
     }
 
@@ -112,10 +98,10 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "limit" });
     }
 
-    const t = transporter(email, password);
+    const transporter = createTransport(email, password);
 
     try {
-      await t.verify();
+      await transporter.verify();
     } catch {
       return res.json({ status: "auth_error" });
     }
@@ -126,24 +112,22 @@ app.post("/send", async (req, res) => {
       const to = list[i];
 
       try {
-        const html = format(message);
-
-        await t.sendMail({
-          from: `"${rand(names)}" <${email}>`,
-          to,
+        await transporter.sendMail({
+          from: email,
+          to: to,
           subject: getSubject(subject),
           text: message,
-          html: `<div style="font-family:Arial">${html}</div>`
+          html: `<div style="font-family:Arial">${format(message)}</div>`
         });
 
         sent++;
 
-        // normal delay
-        await delay(BASE_DELAY + Math.random() * 400);
+        // human delay
+        await wait(humanDelay());
 
-        // long pause (important)
-        if (sent % LONG_PAUSE === 0) {
-          await delay(2000 + Math.random() * 2000);
+        // long pause every few mails
+        if (sent % 5 === 0) {
+          await wait(3000 + Math.random() * 2000);
         }
 
       } catch (e) {
@@ -153,7 +137,7 @@ app.post("/send", async (req, res) => {
 
     res.json({ status: "success", sent });
 
-  } catch {
+  } catch (e) {
     res.json({ status: "error" });
   }
 });
