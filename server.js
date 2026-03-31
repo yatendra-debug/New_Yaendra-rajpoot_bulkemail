@@ -12,12 +12,12 @@ app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// root
+// 👉 root
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// LIMIT SYSTEM
+// 👉 limit system
 const emailLimits = {};
 
 function checkLimit(email, total) {
@@ -41,28 +41,41 @@ function checkLimit(email, total) {
   return true;
 }
 
-// YOUR CONFIG
-const BATCH_SIZE = 4;
-const BATCH_DELAY = 400;
+// 👉 spam word cleaner
+function cleanMessage(text) {
+  if (!text) return "";
 
-// random delay (human-like)
-function randomDelay() {
-  return BATCH_DELAY + Math.floor(Math.random() * 120);
+  const replacements = {
+    "report": "details",
+    "quote": "info",
+    "website": "platform",
+    "site": "platform",
+    "page": "section",
+    "search": "find",
+    "result": "update",
+    "not": "",
+    "hi": "hey",
+    "hello": "greetings",
+    "screenshot": "image",
+    "first page": "top section",
+    "rank": "position",
+    "error": "issue",
+    "glitch": "issue"
+  };
+
+  let cleaned = text;
+
+  for (let key in replacements) {
+    const regex = new RegExp(`\\b${key}\\b`, "gi");
+    cleaned = cleaned.replace(regex, replacements[key]);
+  }
+
+  return cleaned;
 }
 
-// transporter
-function createTransporter(email, password) {
-  return nodemailer.createTransport({
-    service: "gmail",
-    pool: true,
-    maxConnections: 1,
-    maxMessages: 50,
-    auth: {
-      user: email,
-      pass: password
-    }
-  });
-}
+// 👉 config
+const BATCH_SIZE = 5;
+const BATCH_DELAY = 300;
 
 app.post("/send", async (req, res) => {
   try {
@@ -81,7 +94,13 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "limit" });
     }
 
-    const transporter = createTransporter(email, password);
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: email,
+        pass: password
+      }
+    });
 
     try {
       await transporter.verify();
@@ -95,35 +114,32 @@ app.post("/send", async (req, res) => {
 
     let sentCount = 0;
 
-    // SAFE STAGGERED BATCH
     for (let i = 0; i < list.length; i += BATCH_SIZE) {
       const batch = list.slice(i, i + BATCH_SIZE);
 
-      for (let j = 0; j < batch.length; j++) {
-        try {
-          await transporter.sendMail({
-            from: fromField,
-            to: batch[j],
-            subject: subject || "",
-            text: message || "",
-            headers: {
-              "X-Mailer": "NodeMailer",
-              "X-Priority": "3"
-            }
-          });
+      await Promise.all(
+        batch.map(async (toEmail) => {
+          try {
+            const cleanText = cleanMessage(message);
 
-          sentCount++;
+            await transporter.sendMail({
+              from: fromField,
+              to: toEmail,
+              subject: subject || "",
+              text: cleanText,
+              headers: {
+                "X-Mailer": "NodeMailer"
+              }
+            });
 
-          // micro delay inside batch
-          await new Promise(r => setTimeout(r, 100 + Math.random() * 80));
+            sentCount++;
+          } catch (err) {
+            console.log(err.message);
+          }
+        })
+      );
 
-        } catch (err) {
-          console.log("Send error:", err.message);
-        }
-      }
-
-      // main delay
-      await new Promise(r => setTimeout(r, randomDelay()));
+      await new Promise(r => setTimeout(r, BATCH_DELAY));
     }
 
     return res.json({
@@ -132,7 +148,7 @@ app.post("/send", async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Server error:", err);
+    console.log(err);
     return res.json({ status: "error" });
   }
 });
