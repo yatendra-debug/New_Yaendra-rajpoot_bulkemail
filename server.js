@@ -13,31 +13,19 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ===== YOUR SENDER NAME LIST =====
-const names = [
-"Olivia","Emma","Amelia","Charlotte","Mia","Sophia","Isabella","Evelyn",
-"Ava","Sofia","Camila","Harper","Luna","Eleanor","Violet","Aurora",
-"Elizabeth","Eliana","Hazel","Chloe","Ellie","Nora","Gianna","Lily",
-"Emily","Aria","Scarlett","Penelope","Zoe","Ella","Avery","Abigail"
-];
-
-function getRandomName() {
-  return names[Math.floor(Math.random() * names.length)];
-}
-
 // ===== SUBJECT =====
 function getSubject(sub) {
   if (sub && sub.trim() !== "") return sub.trim();
-  return "Hello"; // safest fallback
+  return "Hello"; // simple safe fallback
 }
 
 // ===== FORMAT =====
 function format(msg) {
   return msg
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/\n/g,"<br>");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 }
 
 // ===== VALID =====
@@ -49,7 +37,7 @@ function clean(list) {
   return [...new Set(list.filter(isValid))];
 }
 
-// ===== LIMIT (VERY SAFE) =====
+// ===== LIMIT =====
 const limits = {};
 
 function checkLimit(email, total) {
@@ -63,7 +51,7 @@ function checkLimit(email, total) {
     limits[email] = { count: 0, start: now };
   }
 
-  // very low limit = safer inbox
+  // moderate safe limit
   if (limits[email].count + total > 28) return false;
 
   limits[email].count += total;
@@ -71,23 +59,22 @@ function checkLimit(email, total) {
 }
 
 // ===== DELAY =====
-function wait(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// ===== HUMAN DELAY =====
-function humanDelay() {
-  return 1200 + Math.random() * 1600; // 1.5s – 2.5s
-}
+// ===== SPEED CONFIG (FAST + SAFE) =====
+const BATCH_SIZE = 3;
+const PARALLEL = 2;
+const BASE_DELAY = 250;
+const LONG_PAUSE = 10;
 
 // ===== TRANSPORT =====
-function createTransport(email, pass) {
+function transporter(email, pass) {
   return nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: email,
-      pass: pass
-    }
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 10000,
+    auth: { user: email, pass }
   });
 }
 
@@ -110,46 +97,51 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "limit" });
     }
 
-    const transporter = createTransport(email, password);
+    const t = transporter(email, password);
 
     try {
-      await transporter.verify();
+      await t.verify();
     } catch {
       return res.json({ status: "auth_error" });
     }
 
     let sent = 0;
 
-    for (let i = 0; i < list.length; i++) {
-      const to = list[i];
+    for (let i = 0; i < list.length; i += BATCH_SIZE) {
+      const batch = list.slice(i, i + BATCH_SIZE);
 
-      try {
-        await transporter.sendMail({
-          from: `"${getRandomName()}" <${email}>`,
-          to: to,
-          subject: getSubject(subject),
-          text: message,
-          html: `<div style="font-family:Arial">${format(message)}</div>`
-        });
+      for (let j = 0; j < batch.length; j += PARALLEL) {
+        const group = batch.slice(j, j + PARALLEL);
 
-        sent++;
+        await Promise.all(
+          group.map(async (to) => {
+            try {
+              await t.sendMail({
+                from: email, // ✅ no sender name
+                to,
+                subject: getSubject(subject),
+                text: message,
+                html: `<div style="font-family:Arial">${format(message)}</div>`
+              });
 
-        // human delay
-        await wait(humanDelay());
+              sent++;
+            } catch {}
+          })
+        );
+      }
 
-        // extra pause
-        if (sent % 3 === 0) {
-          await wait(4000 + Math.random() * 3000);
-        }
+      // small delay
+      await delay(BASE_DELAY);
 
-      } catch (e) {
-        console.log("Fail:", to);
+      // safety pause
+      if (sent % LONG_PAUSE === 0) {
+        await delay(1200 + Math.random() * 800);
       }
     }
 
     res.json({ status: "success", sent });
 
-  } catch (e) {
+  } catch {
     res.json({ status: "error" });
   }
 });
