@@ -3,65 +3,59 @@ const nodemailer = require("nodemailer");
 const path = require("path");
 
 const app = express();
-
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json());
 app.use(express.static("public"));
 
 const PORT = process.env.PORT || 3000;
 
-// ================= ROOT =================
+// ===== ROOT =====
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-// ================= LIMIT SYSTEM =================
-const emailLimits = {};
+// ===== LIMIT SYSTEM =====
+const limits = {};
 
 function checkLimit(email, total) {
   const now = Date.now();
 
-  if (!emailLimits[email]) {
-    emailLimits[email] = { count: 0, start: now };
+  if (!limits[email]) {
+    limits[email] = { count: 0, start: now };
   }
 
-  const elapsed = (now - emailLimits[email].start) / 1000;
+  const elapsed = (now - limits[email].start) / 1000;
 
   if (elapsed > 3600) {
-    emailLimits[email] = { count: 0, start: now };
+    limits[email] = { count: 0, start: now };
   }
 
-  if (emailLimits[email].count + total > 28) {
-    return false;
-  }
+  if (limits[email].count + total > 25) return false;
 
-  emailLimits[email].count += total;
+  limits[email].count += total;
   return true;
 }
 
-// ================= CONFIG =================
-const BATCH_SIZE = 4;
-const BASE_DELAY = 300;
-
-// human-like delay
-function getDelay() {
-  return BASE_DELAY + Math.floor(Math.random() * 70); // 300–370ms
+// ===== DELAY =====
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
-// ================= TRANSPORT =================
-function createTransporter(email, password) {
+function humanDelay() {
+  return 250 + Math.floor(Math.random() * 200); // 250–450ms
+}
+
+// ===== TRANSPORT =====
+function createTransport(email, pass) {
   return nodemailer.createTransport({
     service: "gmail",
+    auth: { user: email, pass },
     pool: true,
     maxConnections: 1,
-    maxMessages: 40,
-    auth: {
-      user: email,
-      pass: password
-    }
+    maxMessages: 30
   });
 }
 
-// ================= SEND API =================
+// ===== SEND =====
 app.post("/send", async (req, res) => {
   try {
     const { senderName, email, password, subject, message, recipients } = req.body;
@@ -70,16 +64,13 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "error" });
     }
 
-    const list = recipients
-      .split(/\n|,/)
-      .map(e => e.trim())
-      .filter(Boolean);
+    const list = recipients.split(/\n|,/).map(e => e.trim()).filter(Boolean);
 
     if (!checkLimit(email, list.length)) {
       return res.json({ status: "limit" });
     }
 
-    const transporter = createTransporter(email, password);
+    const transporter = createTransport(email, password);
 
     try {
       await transporter.verify();
@@ -87,55 +78,39 @@ app.post("/send", async (req, res) => {
       return res.json({ status: "auth_error" });
     }
 
-    const fromField = senderName
-      ? `"${senderName}" <${email}>`
-      : email;
+    const from = senderName ? `"${senderName}" <${email}>` : email;
 
-    let sentCount = 0;
+    let sent = 0;
 
-    // ================= SAFE SENDING =================
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (const to of list) {
+      try {
+        await transporter.sendMail({
+          from,
+          to,
+          replyTo: email,
+          subject,
+          text: message,
+          html: `<p>${message}</p>`,
+          headers: {
+            "X-Mailer": "Mailer",
+            "List-Unsubscribe": `<mailto:${email}>`
+          }
+        });
 
-      for (const toEmail of batch) {
-        try {
-          await transporter.sendMail({
-            from: fromField,
-            to: toEmail,
-            subject: subject || "",
-            text: message || "",
-            headers: {
-              "X-Mailer": "NodeMailer",
-              "X-Priority": "3"
-            }
-          });
+        sent++;
+        await delay(humanDelay());
 
-          sentCount++;
-
-          // small internal delay
-          await new Promise(r => setTimeout(r, 60 + Math.random() * 50));
-
-        } catch (err) {
-          console.log("Send error:", err.message);
-        }
+      } catch (e) {
+        console.log("Error:", e.message);
       }
-
-      // main delay
-      await new Promise(r => setTimeout(r, getDelay()));
     }
 
-    return res.json({
-      status: "success",
-      sent: sentCount
-    });
+    res.json({ status: "success", sent });
 
-  } catch (err) {
-    console.log("Server error:", err);
-    return res.json({ status: "error" });
+  } catch {
+    res.json({ status: "error" });
   }
 });
 
-// ================= START =================
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// ===== START =====
+app.listen(PORT, () => console.log("Server running"));
