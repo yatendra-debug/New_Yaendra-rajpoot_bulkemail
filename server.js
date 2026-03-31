@@ -52,7 +52,7 @@ function checkLimit(email, total) {
   }
 
   // SAFE LIMIT
-  if (limits[email].count + total > 15) return false;
+  if (limits[email].count + total > 28) return false;
 
   limits[email].count += total;
   return true;
