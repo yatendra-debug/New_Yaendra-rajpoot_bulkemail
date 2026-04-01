@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       alert(`Send_1 ✅\nEmails Sent: ${data.sent}`);
 
-    } catch (err) {
+    } catch {
       alert("Server error ❌");
     } finally {
       sending = false;
