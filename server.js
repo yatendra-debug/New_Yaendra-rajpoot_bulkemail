@@ -17,10 +17,10 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚡ FAST BUT SAFE SETTINGS */
-const HOURLY_LIMIT = 35;   // thoda increase (safe range)
-const PARALLEL = 4;       // fast but safe
-const DELAY_MS = 80;      // fast delay
+/* ⚡ SAFE FAST SETTINGS */
+const HOURLY_LIMIT = 35;
+const PARALLEL = 4;
+const DELAY_MS = 80;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
@@ -32,24 +32,18 @@ const cleanName = n => (n || "").replace(/[<>"]/g, "").trim().slice(0, 60);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* 🔥 3 LINE GAP INSERT */
-function addSecurityLine(message) {
-  const lines = message.split("\n");
-  const result = [];
+/* 🔥 FINAL FOOTER (END + 3 LINE GAP) */
+function addFooter(message) {
+  const trimmed = message.trim();
 
-  for (let i = 0; i < lines.length; i++) {
-    result.push(lines[i]);
-
-    // every 3 lines
-    if ((i + 1) % 3 === 0) {
-      result.push("📩 Secure and scanned — www.avast.com");
-    }
-  }
-
-  return result.join("\n");
+  return (
+    trimmed +
+    "\n\n\n" + // 3 line gap
+    "📩 Secure and scanned — www.avast.com"
+  );
 }
 
-/* 🚀 FAST SAFE SENDING */
+/* 🚀 FAST SAFE SEND */
 async function sendSafely(transporter, mails) {
   let sent = 0;
 
@@ -111,7 +105,8 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
-  const finalMessage = addSecurityLine(cleanText(message));
+  /* ✅ APPLY FINAL FOOTER */
+  const finalMessage = addFooter(cleanText(message));
 
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
