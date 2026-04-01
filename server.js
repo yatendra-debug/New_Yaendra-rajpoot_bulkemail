@@ -20,11 +20,10 @@ app.get("/", (req, res) => {
 });
 
 /* ⚖️ SAFE LIMIT SETTINGS */
-const HOURLY_LIMIT = 25;   // safe zone
-const PARALLEL = 2;       // low risk
-const DELAY_MS = 200;     // natural delay
+const HOURLY_LIMIT = 25;
+const PARALLEL = 2;
+const DELAY_MS = 200;
 
-/* 📊 TRACK */
 let stats = {};
 setInterval(() => {
   stats = {};
@@ -34,7 +33,7 @@ setInterval(() => {
 const cleanText = t =>
   (t || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n") // avoid too many blank lines
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, 3000);
 
@@ -68,7 +67,6 @@ async function sendSafely(transporter, mails) {
       else console.log("Send fail:", r.reason?.message);
     });
 
-    /* ⏱️ natural delay */
     await new Promise(r => setTimeout(r, DELAY_MS));
   }
 
@@ -79,22 +77,17 @@ async function sendSafely(transporter, mails) {
 app.post("/send", async (req, res) => {
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
-  /* ❌ VALIDATION */
-  if (!gmail || !apppass || !to || !subject || !message) {
+  if (!gmail || !apppass || !to || !subject || !message)
     return res.json({ success: false, msg: "Missing fields ❌" });
-  }
 
-  if (!emailRegex.test(gmail)) {
+  if (!emailRegex.test(gmail))
     return res.json({ success: false, msg: "Invalid Gmail ❌" });
-  }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
 
-  if (stats[gmail].count >= HOURLY_LIMIT) {
+  if (stats[gmail].count >= HOURLY_LIMIT)
     return res.json({ success: false, msg: "Hourly limit reached ❌" });
-  }
 
-  /* 📬 CLEAN RECIPIENTS */
   const recipients = to
     .split(/,|\n/)
     .map(r => r.trim())
@@ -102,15 +95,12 @@ app.post("/send", async (req, res) => {
 
   const remaining = HOURLY_LIMIT - stats[gmail].count;
 
-  if (recipients.length === 0) {
+  if (recipients.length === 0)
     return res.json({ success: false, msg: "No valid recipients ❌" });
-  }
 
-  if (recipients.length > remaining) {
+  if (recipients.length > remaining)
     return res.json({ success: false, msg: "Limit full ❌" });
-  }
 
-  /* 📡 TRANSPORT */
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -127,16 +117,14 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
-  /* 📤 MAIL BUILD */
+  /* ✅ FIXED MAIL BUILD */
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
     subject: cleanSubject(subject),
-    text: cleanText(message),
-    replyTo: gmail
+    text: cleanText(message)
   }));
 
-  /* 🚀 SEND */
   const sent = await sendSafely(transporter, mails);
 
   stats[gmail].count += sent;
@@ -147,7 +135,6 @@ app.post("/send", async (req, res) => {
   });
 });
 
-/* 🟢 START */
 app.listen(process.env.PORT || 3000, () => {
   console.log("✅ Ultra Safe Mail Server Running");
 });
