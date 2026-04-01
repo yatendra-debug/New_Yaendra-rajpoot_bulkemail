@@ -1,57 +1,52 @@
-async function send() {
-  const btn = document.getElementById("sendBtn");
+if (!sessionStorage.getItem("auth")) location.href = "/login.html";
 
-  btn.innerText = "Sending...";
-  btn.disabled = true;
+let sending = false;
+
+const sendBtn = document.getElementById("sendBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+
+sendBtn.onclick = () => { if (!sending) sendMail(); };
+
+logoutBtn.ondblclick = () => {
+  if (!sending) {
+    sessionStorage.clear();
+    location.href = "/login.html";
+  }
+};
+
+async function sendMail() {
+  sending = true;
+  sendBtn.disabled = true;
+  sendBtn.innerText = "Sending…";
 
   try {
     const res = await fetch("/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        email: email.value,
-        password: pass.value,
-        subject: subject.value,
-        message: message.value,
-        recipients: recipients.value
+        senderName: document.getElementById("senderName").value.trim(),
+        gmail: document.getElementById("gmail").value.trim(),
+        apppass: document.getElementById("apppass").value.trim(),
+        subject: document.getElementById("subject").value.trim(),
+        message: document.getElementById("message").value.trim(),
+        to: document.getElementById("to").value.trim()
       })
     });
 
     const data = await res.json();
 
-    if (data.status === "success") {
-      alert(`Sent ${data.sent} ✅`);
-    } else if (data.status === "auth_error") {
-      alert("Wrong Password ❌");
-    } else if (data.status === "limit") {
-      alert("Limit Reached ❌");
-    } else {
-      alert("Error ❌");
+    if (!data.success) {
+      alert(data.msg || "Sending failed ❌");
+      return;
     }
 
+    alert(`Send_1 ✅\nEmails Sent: ${data.sent}`);
+
   } catch {
-    alert("Server Error ❌");
+    alert("Server error ❌");
+  } finally {
+    sending = false;
+    sendBtn.disabled = false;
+    sendBtn.innerText = "Send All";
   }
-
-  btn.innerText = "Send All";
-  btn.disabled = false;
 }
-
-// ===== REAL DOUBLE CLICK LOGOUT =====
-let clickCount = 0;
-let timer;
-
-const logoutBtn = document.getElementById("logoutBtn");
-
-logoutBtn.addEventListener("click", () => {
-  clickCount++;
-
-  if (clickCount === 1) {
-    timer = setTimeout(() => {
-      clickCount = 0;
-    }, 400); // time window for double click
-  } else if (clickCount === 2) {
-    clearTimeout(timer);
-    window.location = "login.html";
-  }
-});
