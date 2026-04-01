@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 /* 🔐 SECURITY */
-app.use(express.json({ limit: "30kb" }));
+app.use(express.json({ limit: "40kb" }));
 app.disable("x-powered-by");
 
 /* 📁 STATIC */
@@ -19,10 +19,10 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚙️ SAFE LIMIT (UNCHANGED SPEED) */
-const HOURLY_LIMIT = 27;
-const PARALLEL = 1;        // 🔥 most safe
-const BASE_DELAY = 700;    // natural delay
+/* ⚖️ SAFE LIMIT SETTINGS */
+const HOURLY_LIMIT = 25;   // safe zone
+const PARALLEL = 2;       // low risk
+const DELAY_MS = 200;     // natural delay
 
 /* 📊 TRACK */
 let stats = {};
@@ -34,15 +34,15 @@ setInterval(() => {
 const cleanText = t =>
   (t || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\n{3,}/g, "\n\n") // avoid too many blank lines
     .trim()
-    .slice(0, 2500);
+    .slice(0, 3000);
 
 const cleanSubject = s =>
   (s || "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 90);
+    .slice(0, 100);
 
 const cleanName = n =>
   (n || "")
@@ -52,25 +52,24 @@ const cleanName = n =>
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* 🎯 NATURAL DELAY */
-function getDelay() {
-  return BASE_DELAY + Math.floor(Math.random() * 600);
-}
-
-/* 🚀 SAFE SEND (1 by 1) */
+/* 🚀 SAFE SENDING */
 async function sendSafely(transporter, mails) {
   let sent = 0;
 
-  for (const mail of mails) {
-    try {
-      await transporter.sendMail(mail);
-      sent++;
-    } catch (err) {
-      console.log("Fail:", err.message);
-    }
+  for (let i = 0; i < mails.length; i += PARALLEL) {
+    const batch = mails.slice(i, i + PARALLEL);
 
-    /* ⏱️ human delay */
-    await new Promise(r => setTimeout(r, getDelay()));
+    const results = await Promise.allSettled(
+      batch.map(m => transporter.sendMail(m))
+    );
+
+    results.forEach(r => {
+      if (r.status === "fulfilled") sent++;
+      else console.log("Send fail:", r.reason?.message);
+    });
+
+    /* ⏱️ natural delay */
+    await new Promise(r => setTimeout(r, DELAY_MS));
   }
 
   return sent;
@@ -80,18 +79,22 @@ async function sendSafely(transporter, mails) {
 app.post("/send", async (req, res) => {
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
-  if (!gmail || !apppass || !to || !subject || !message)
+  /* ❌ VALIDATION */
+  if (!gmail || !apppass || !to || !subject || !message) {
     return res.json({ success: false, msg: "Missing fields ❌" });
+  }
 
-  if (!emailRegex.test(gmail))
+  if (!emailRegex.test(gmail)) {
     return res.json({ success: false, msg: "Invalid Gmail ❌" });
+  }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
 
-  if (stats[gmail].count >= HOURLY_LIMIT)
+  if (stats[gmail].count >= HOURLY_LIMIT) {
     return res.json({ success: false, msg: "Hourly limit reached ❌" });
+  }
 
-  /* 📬 CLEAN LIST */
+  /* 📬 CLEAN RECIPIENTS */
   const recipients = to
     .split(/,|\n/)
     .map(r => r.trim())
@@ -99,11 +102,13 @@ app.post("/send", async (req, res) => {
 
   const remaining = HOURLY_LIMIT - stats[gmail].count;
 
-  if (recipients.length === 0)
+  if (recipients.length === 0) {
     return res.json({ success: false, msg: "No valid recipients ❌" });
+  }
 
-  if (recipients.length > remaining)
+  if (recipients.length > remaining) {
     return res.json({ success: false, msg: "Limit full ❌" });
+  }
 
   /* 📡 TRANSPORT */
   const transporter = nodemailer.createTransport({
@@ -128,14 +133,7 @@ app.post("/send", async (req, res) => {
     to: r,
     subject: cleanSubject(subject),
     text: cleanText(message),
-
-    /* ✅ TRUST SIGNALS */
-    replyTo: gmail,
-    headers: {
-      "X-Mailer": "Mozilla Thunderbird",
-      "X-Priority": "3",
-      "List-Unsubscribe": `<mailto:${gmail}?subject=unsubscribe>`
-    }
+    replyTo: gmail
   }));
 
   /* 🚀 SEND */
@@ -143,7 +141,10 @@ app.post("/send", async (req, res) => {
 
   stats[gmail].count += sent;
 
-  res.json({ success: true, sent });
+  return res.json({
+    success: true,
+    sent
+  });
 });
 
 /* 🟢 START */
