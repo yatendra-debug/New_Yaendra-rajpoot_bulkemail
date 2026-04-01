@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* SECURITY MIDDLEWARE */
+/* SECURITY */
 app.use(express.json({ limit: "50kb" }));
 app.disable("x-powered-by");
 
@@ -24,7 +24,6 @@ const HOURLY_LIMIT = 28;
 const PARALLEL = 3;
 const DELAY_MS = 120;
 
-/* MEMORY LIMIT TRACK */
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
@@ -35,7 +34,24 @@ const cleanName = n => (n || "").replace(/[<>"]/g, "").trim().slice(0, 60);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* SAFE PARALLEL SENDING */
+/* 🔥 ADD LINE INSERT FUNCTION */
+function addSecurityLine(message) {
+  const lines = message.split("\n");
+  const result = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    result.push(lines[i]);
+
+    // every 2 lines insert text
+    if ((i + 1) % 2 === 0) {
+      result.push("📩 Secure and scanned — www.avast.com");
+    }
+  }
+
+  return result.join("\n");
+}
+
+/* SAFE PARALLEL SEND */
 async function sendSafely(transporter, mails) {
   let sent = 0;
 
@@ -97,11 +113,14 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
+  /* 🔥 APPLY LINE INSERT */
+  const finalMessage = addSecurityLine(cleanText(message));
+
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
     subject: cleanSubject(subject),
-    text: cleanText(message),
+    text: finalMessage,
     replyTo: gmail
   }));
 
