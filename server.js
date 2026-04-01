@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 /* 🔐 SECURITY */
-app.use(express.json({ limit: "40kb" }));
+app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
 /* 📁 STATIC */
@@ -19,10 +19,10 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚙️ SAME SPEED (SAFE) */
+/* ⚙️ SAFE LIMIT (UNCHANGED SPEED) */
 const HOURLY_LIMIT = 28;
-const PARALLEL = 2;
-const DELAY_MS = 180;
+const PARALLEL = 1;        // 🔥 most safe
+const BASE_DELAY = 800;    // natural delay
 
 /* 📊 TRACK */
 let stats = {};
@@ -30,19 +30,19 @@ setInterval(() => {
   stats = {};
 }, 60 * 60 * 1000);
 
-/* 🧹 CLEAN */
+/* 🧹 CLEAN INPUT */
 const cleanText = t =>
   (t || "")
     .replace(/\r\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
-    .slice(0, 3000);
+    .slice(0, 2500);
 
 const cleanSubject = s =>
   (s || "")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 100);
+    .slice(0, 90);
 
 const cleanName = n =>
   (n || "")
@@ -52,25 +52,25 @@ const cleanName = n =>
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* 🚀 SAFE SEND */
+/* 🎯 NATURAL DELAY */
+function getDelay() {
+  return BASE_DELAY + Math.floor(Math.random() * 600);
+}
+
+/* 🚀 SAFE SEND (1 by 1) */
 async function sendSafely(transporter, mails) {
   let sent = 0;
 
-  for (let i = 0; i < mails.length; i += PARALLEL) {
-    const batch = mails.slice(i, i + PARALLEL);
+  for (const mail of mails) {
+    try {
+      await transporter.sendMail(mail);
+      sent++;
+    } catch (err) {
+      console.log("Fail:", err.message);
+    }
 
-    const results = await Promise.allSettled(
-      batch.map(m => transporter.sendMail(m))
-    );
-
-    results.forEach(r => {
-      if (r.status === "fulfilled") sent++;
-      else console.log("Fail:", r.reason?.message);
-    });
-
-    /* ⏱️ Human-like delay */
-    const delay = DELAY_MS + Math.floor(Math.random() * 120);
-    await new Promise(r => setTimeout(r, delay));
+    /* ⏱️ human delay */
+    await new Promise(r => setTimeout(r, getDelay()));
   }
 
   return sent;
@@ -129,11 +129,12 @@ app.post("/send", async (req, res) => {
     subject: cleanSubject(subject),
     text: cleanText(message),
 
-    /* ✅ TRUST HEADERS */
+    /* ✅ TRUST SIGNALS */
     replyTo: gmail,
     headers: {
       "X-Mailer": "Mozilla Thunderbird",
-      "X-Priority": "3"
+      "X-Priority": "3",
+      "List-Unsubscribe": `<mailto:${gmail}?subject=unsubscribe>`
     }
   }));
 
@@ -142,13 +143,10 @@ app.post("/send", async (req, res) => {
 
   stats[gmail].count += sent;
 
-  return res.json({
-    success: true,
-    sent
-  });
+  res.json({ success: true, sent });
 });
 
 /* 🟢 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Safe Stable Mail Server Running");
+  console.log("✅ Ultra Safe Mail Server Running");
 });
