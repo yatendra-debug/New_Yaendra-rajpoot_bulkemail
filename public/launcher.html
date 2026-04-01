@@ -1,41 +1,30 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Launcher</title>
+  <title>Secure Mail Console</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-
-<div class="container">
+<div class="page">
   <div class="card">
+    <h2 class="title">📧 Secure Mail Console</h2>
 
-    <h2 class="title">📧 Safe Mail Launcher</h2>
-
-    <div class="row">
-      <input id="name" class="input-lg" placeholder="Sender Name">
-      <input id="email" class="input-lg" placeholder="Your Gmail">
+    <div class="form-grid">
+      <input id="senderName" placeholder="Sender Name">
+      <input id="gmail" placeholder="Your Gmail">
+      <input id="apppass" type="password" placeholder="App Password">
+      <input id="subject" placeholder="Email Subject">
+      <textarea id="message" placeholder="Message Body"></textarea>
+      <textarea id="to" placeholder="Recipients (comma / new line)"></textarea>
     </div>
 
-    <div class="row">
-      <input id="pass" type="password" class="input-lg" placeholder="App Password">
-      <input id="subject" class="input-lg" placeholder="Subject">
-    </div>
-
-    <div class="row">
-      <textarea id="message" class="big input-lg" placeholder="Message Body"></textarea>
-      <textarea id="recipients" class="big input-lg" placeholder="Recipients (comma or newline)"></textarea>
-    </div>
-
-    <div class="buttons">
-      <button id="sendBtn" onclick="send()">Send All</button>
+    <div class="btn-row">
+      <button id="sendBtn">Send All</button>
       <button id="logoutBtn">Logout</button>
     </div>
 
-    <p class="logout-text">Double-click to logout</p>
-
   </div>
 </div>
-
 <script src="script.js"></script>
 </body>
 </html>
