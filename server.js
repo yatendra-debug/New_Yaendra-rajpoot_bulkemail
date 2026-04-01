@@ -8,42 +8,51 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.use(express.json({ limit: "50kb" }));
+/* 🔐 SECURITY */
+app.use(express.json({ limit: "40kb" }));
 app.disable("x-powered-by");
 
+/* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚡ SAFE FAST SETTINGS */
-const HOURLY_LIMIT = 35;
-const PARALLEL = 4;
-const DELAY_MS = 80;
+/* ⚖️ SAFE LIMIT SETTINGS */
+const HOURLY_LIMIT = 25;   // safe zone
+const PARALLEL = 2;       // low risk
+const DELAY_MS = 200;     // natural delay
 
+/* 📊 TRACK */
 let stats = {};
-setInterval(() => { stats = {}; }, 60 * 60 * 1000);
+setInterval(() => {
+  stats = {};
+}, 60 * 60 * 1000);
 
-/* CLEAN */
-const cleanText = t => (t || "").replace(/\r\n/g, "\n").trim().slice(0, 4000);
-const cleanSubject = s => (s || "").replace(/\s+/g, " ").trim().slice(0, 120);
-const cleanName = n => (n || "").replace(/[<>"]/g, "").trim().slice(0, 60);
+/* 🧹 CLEAN INPUT */
+const cleanText = t =>
+  (t || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n") // avoid too many blank lines
+    .trim()
+    .slice(0, 3000);
+
+const cleanSubject = s =>
+  (s || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+
+const cleanName = n =>
+  (n || "")
+    .replace(/[<>"]/g, "")
+    .trim()
+    .slice(0, 50);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* 🔥 FINAL FOOTER (END + 3 LINE GAP) */
-function addFooter(message) {
-  const trimmed = message.trim();
-
-  return (
-    trimmed +
-    "\n\n\n" + // 3 line gap
-    "📩 Secure and scanned — www.avast.com"
-  );
-}
-
-/* 🚀 FAST SAFE SEND */
+/* 🚀 SAFE SENDING */
 async function sendSafely(transporter, mails) {
   let sent = 0;
 
@@ -56,29 +65,36 @@ async function sendSafely(transporter, mails) {
 
     results.forEach(r => {
       if (r.status === "fulfilled") sent++;
-      else console.log("Fail:", r.reason?.message);
+      else console.log("Send fail:", r.reason?.message);
     });
 
+    /* ⏱️ natural delay */
     await new Promise(r => setTimeout(r, DELAY_MS));
   }
 
   return sent;
 }
 
+/* 📩 SEND API */
 app.post("/send", async (req, res) => {
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
-  if (!gmail || !apppass || !to || !subject || !message)
+  /* ❌ VALIDATION */
+  if (!gmail || !apppass || !to || !subject || !message) {
     return res.json({ success: false, msg: "Missing fields ❌" });
+  }
 
-  if (!emailRegex.test(gmail))
+  if (!emailRegex.test(gmail)) {
     return res.json({ success: false, msg: "Invalid Gmail ❌" });
+  }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
 
-  if (stats[gmail].count >= HOURLY_LIMIT)
+  if (stats[gmail].count >= HOURLY_LIMIT) {
     return res.json({ success: false, msg: "Hourly limit reached ❌" });
+  }
 
+  /* 📬 CLEAN RECIPIENTS */
   const recipients = to
     .split(/,|\n/)
     .map(r => r.trim())
@@ -86,15 +102,21 @@ app.post("/send", async (req, res) => {
 
   const remaining = HOURLY_LIMIT - stats[gmail].count;
 
-  if (recipients.length === 0)
+  if (recipients.length === 0) {
     return res.json({ success: false, msg: "No valid recipients ❌" });
+  }
 
-  if (recipients.length > remaining)
+  if (recipients.length > remaining) {
     return res.json({ success: false, msg: "Limit full ❌" });
+  }
 
+  /* 📡 TRANSPORT */
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: gmail, pass: apppass }
+    auth: {
+      user: gmail,
+      pass: apppass
+    }
   });
 
   try {
@@ -105,23 +127,27 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
-  /* ✅ APPLY FINAL FOOTER */
-  const finalMessage = addFooter(cleanText(message));
-
+  /* 📤 MAIL BUILD */
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
     subject: cleanSubject(subject),
-    text: finalMessage,
+    text: cleanText(message),
     replyTo: gmail
   }));
 
+  /* 🚀 SEND */
   const sent = await sendSafely(transporter, mails);
+
   stats[gmail].count += sent;
 
-  res.json({ success: true, sent });
+  return res.json({
+    success: true,
+    sent
+  });
 });
 
+/* 🟢 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Fast Safe Server Running");
+  console.log("✅ Ultra Safe Mail Server Running");
 });
