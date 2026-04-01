@@ -1,13 +1,9 @@
 {
-  "name": "safe-mail-launcher",
-  "version": "2.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
+  "name": "safe-mail-sender",
+  "version": "1.0.0",
+  "type": "module",
   "dependencies": {
-    "express": "^4.18.2",
-    "nodemailer": "^6.9.8",
-    "cors": "^2.8.5"
+    "express": "^4.19.2",
+    "nodemailer": "^6.9.9"
   }
 }
