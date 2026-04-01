@@ -20,9 +20,9 @@ app.get("/", (req, res) => {
 });
 
 /* ⚙️ SAFE LIMIT (UNCHANGED SPEED) */
-const HOURLY_LIMIT = 28;
+const HOURLY_LIMIT = 27;
 const PARALLEL = 1;        // 🔥 most safe
-const BASE_DELAY = 800;    // natural delay
+const BASE_DELAY = 700;    // natural delay
 
 /* 📊 TRACK */
 let stats = {};
