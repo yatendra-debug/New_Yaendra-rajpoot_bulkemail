@@ -20,7 +20,7 @@ app.get("/", (req, res) => {
 });
 
 /* ⚖️ SAFE LIMIT SETTINGS */
-const HOURLY_LIMIT = 25;
+const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
 const DELAY_MS = 200;
 
