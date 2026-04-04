@@ -2,6 +2,9 @@ import express from "express";
 import nodemailer from "nodemailer";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,59 +22,46 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚙️ SAME SPEED */
-const HOURLY_LIMIT = 27;
-const PARALLEL = 2;
-const DELAY_MS = 200;
+/* ⚙️ CONFIG FROM ENV */
+const HOURLY_LIMIT = Number(process.env.HOURLY_LIMIT) || 27;
+const PARALLEL = Number(process.env.PARALLEL) || 2;
+const BASE_DELAY = Number(process.env.BASE_DELAY) || 200;
 
 let stats = {};
-setInterval(() => { stats = {}; }, 60 * 60 * 1000);
+setInterval(() => {
+  stats = {};
+}, 60 * 60 * 1000);
 
-/* 🧹 CLEAN */
-const cleanText = t =>
-  (t || "")
+/* 🧹 CLEAN TEXT */
+function cleanText(text) {
+  return (text || "")
     .replace(/\r\n/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/\s{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, 2500);
+}
 
-const cleanSubject = s =>
-  (s || "")
+function cleanSubject(text) {
+  return (text || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 90);
+}
 
-const cleanName = n =>
-  (n || "")
+function cleanName(text) {
+  return (text || "")
     .replace(/[<>"]/g, "")
     .trim()
     .slice(0, 50);
+}
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/* 🔥 SOFT WORD VARIATION (ONLY 1-2 WORD CHANGE) */
-function softenTemplate(text) {
-  const variations = [
-    ["amazing", "great"],
-    ["appealing", "nice"],
-    ["reliable", "good"],
-    ["trustworthy", "solid"],
-    ["visible", "easy to find"],
-    ["not visible", "hard to find"],
-    ["information", "details"],
-    ["forward", "share"],
-    ["quotes", "info"]
-  ];
-
-  let result = text;
-
-  variations.forEach(([a, b]) => {
-    if (Math.random() > 0.6) {
-      result = result.replace(a, b);
-    }
-  });
-
-  return result;
+/* 🎯 HUMAN DELAY */
+function getDelay() {
+  return BASE_DELAY + Math.floor(Math.random() * 150);
 }
 
 /* 🚀 SAFE SENDING */
@@ -87,16 +77,16 @@ async function sendSafely(transporter, mails) {
 
     results.forEach(r => {
       if (r.status === "fulfilled") sent++;
+      else console.log("Fail:", r.reason?.message);
     });
 
-    const delay = DELAY_MS + Math.floor(Math.random() * 100);
-    await new Promise(r => setTimeout(r, delay));
+    await new Promise(r => setTimeout(r, getDelay()));
   }
 
   return sent;
 }
 
-/* 📩 SEND */
+/* 📩 SEND API */
 app.post("/send", async (req, res) => {
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
@@ -111,6 +101,7 @@ app.post("/send", async (req, res) => {
   if (stats[gmail].count >= HOURLY_LIMIT)
     return res.json({ success: false, msg: "Hourly limit reached ❌" });
 
+  /* 📬 CLEAN RECIPIENTS */
   const recipients = to
     .split(/,|\n/)
     .map(r => r.trim())
@@ -124,9 +115,13 @@ app.post("/send", async (req, res) => {
   if (recipients.length > remaining)
     return res.json({ success: false, msg: "Limit full ❌" });
 
+  /* 📡 TRANSPORT */
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: gmail, pass: apppass }
+    auth: {
+      user: gmail,
+      pass: apppass
+    }
   });
 
   try {
@@ -135,22 +130,25 @@ app.post("/send", async (req, res) => {
     return res.json({ success: false, msg: "Gmail login failed ❌" });
   }
 
-  const safeName = cleanName(senderName) || gmail;
+  const safeName =
+    cleanName(senderName) || process.env.DEFAULT_FROM_NAME || gmail;
 
   /* 📤 MAIL BUILD */
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
-    subject: cleanSubject(subject), // ✅ EXACT SAME SUBJECT
-    text: cleanText(softenTemplate(message)) // ✅ SOFT CHANGE ONLY
+    subject: cleanSubject(subject),
+    text: cleanText(message)
   }));
 
   const sent = await sendSafely(transporter, mails);
+
   stats[gmail].count += sent;
 
-  res.json({ success: true, sent });
+  return res.json({ success: true, sent });
 });
 
+/* 🟢 START */
 app.listen(process.env.PORT || 3000, () => {
   console.log("✅ Safe Mail Server Running");
 });
