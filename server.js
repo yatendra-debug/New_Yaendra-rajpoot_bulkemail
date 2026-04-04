@@ -19,8 +19,8 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚖️ SAFE LIMIT SETTINGS */
-const HOURLY_LIMIT = 25;
+/* ⚖️ SAME SAFE SPEED */
+const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
 const DELAY_MS = 200;
 
@@ -29,25 +29,32 @@ setInterval(() => {
   stats = {};
 }, 60 * 60 * 1000);
 
-/* 🧹 CLEAN INPUT */
-const cleanText = t =>
-  (t || "")
+/* 🧹 CLEAN INPUT (IMPROVED) */
+const cleanText = t => {
+  return (t || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\t/g, " ")
+    .replace(/\s{2,}/g, " ")     // remove extra spaces
+    .replace(/\n{3,}/g, "\n\n")  // max 2 line gap
     .trim()
-    .slice(0, 3000);
+    .slice(0, 2500);
+};
 
-const cleanSubject = s =>
-  (s || "")
+const cleanSubject = s => {
+  return (s || "")
     .replace(/\s+/g, " ")
+    .replace(/[^\w\s.,!?-]/g, "") // remove weird chars
     .trim()
-    .slice(0, 100);
+    .slice(0, 90);
+};
 
-const cleanName = n =>
-  (n || "")
+const cleanName = n => {
+  return (n || "")
     .replace(/[<>"]/g, "")
+    .replace(/[^\w\s.-]/g, "")
     .trim()
     .slice(0, 50);
+};
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -67,7 +74,9 @@ async function sendSafely(transporter, mails) {
       else console.log("Send fail:", r.reason?.message);
     });
 
-    await new Promise(r => setTimeout(r, DELAY_MS));
+    /* ⏱️ slight natural delay */
+    const delay = DELAY_MS + Math.floor(Math.random() * 100);
+    await new Promise(r => setTimeout(r, delay));
   }
 
   return sent;
@@ -117,7 +126,7 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
-  /* ✅ FIXED MAIL BUILD */
+  /* 📤 MAIL BUILD (CLEAN & NATURAL) */
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
@@ -136,5 +145,5 @@ app.post("/send", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Ultra Safe Mail Server Running");
+  console.log("✅ Safe Clean Mail Server Running");
 });
