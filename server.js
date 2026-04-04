@@ -19,44 +19,84 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚖️ SAME SAFE SPEED */
-const HOURLY_LIMIT = 27;
+/* ⚙️ SAME SAFE SPEED */
+const HOURLY_LIMIT = 25;
 const PARALLEL = 2;
 const DELAY_MS = 200;
 
 let stats = {};
-setInterval(() => {
-  stats = {};
-}, 60 * 60 * 1000);
+setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
-/* 🧹 CLEAN INPUT (IMPROVED) */
-const cleanText = t => {
-  return (t || "")
+/* 🧹 CLEAN */
+const cleanText = t =>
+  (t || "")
     .replace(/\r\n/g, "\n")
-    .replace(/\t/g, " ")
-    .replace(/\s{2,}/g, " ")     // remove extra spaces
-    .replace(/\n{3,}/g, "\n\n")  // max 2 line gap
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, 2500);
-};
 
-const cleanSubject = s => {
-  return (s || "")
+const cleanSubject = s =>
+  (s || "")
     .replace(/\s+/g, " ")
-    .replace(/[^\w\s.,!?-]/g, "") // remove weird chars
     .trim()
     .slice(0, 90);
-};
 
-const cleanName = n => {
-  return (n || "")
+const cleanName = n =>
+  (n || "")
     .replace(/[<>"]/g, "")
-    .replace(/[^\w\s.-]/g, "")
     .trim()
     .slice(0, 50);
-};
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/* 🔥 TEMPLATE POOL */
+const templates = [
+`Hi,
+
+I came across your website and it looks really well designed.
+
+I just noticed it’s not appearing much in search results. If you’d like, I can share a few details that might help improve its visibility.
+
+Let me know.`,
+
+`Hello,
+
+Your website looks great and feels well put together.
+
+I was checking it online and couldn’t find it easily in search results. I have a few suggestions that might help — happy to share if you're interested.`,
+
+`Hey,
+
+I recently visited your site — it looks clean and professional.
+
+I noticed it’s not showing up much on search engines. I can send over some quick insights if you’d like.`,
+
+`Hi there,
+
+Your website design is really nice.
+
+While searching, I didn’t see it coming up in results. I’ve got a couple of ideas that could help — let me know if you want me to share them.`,
+
+`Hello,
+
+I checked your website and it looks solid.
+
+It seems a bit hard to find through search engines right now. If you're open to it, I can share a few helpful suggestions.`
+];
+
+/* 🔥 SUBJECT POOL */
+const subjects = [
+  "Quick question about your website",
+  "Small observation about your site",
+  "Regarding your website visibility",
+  "A quick note",
+  "Suggestion for your website"
+];
+
+/* 🎯 RANDOM PICK */
+function getRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 /* 🚀 SAFE SENDING */
 async function sendSafely(transporter, mails) {
@@ -71,22 +111,21 @@ async function sendSafely(transporter, mails) {
 
     results.forEach(r => {
       if (r.status === "fulfilled") sent++;
-      else console.log("Send fail:", r.reason?.message);
+      else console.log("Fail:", r.reason?.message);
     });
 
-    /* ⏱️ slight natural delay */
-    const delay = DELAY_MS + Math.floor(Math.random() * 100);
+    const delay = DELAY_MS + Math.floor(Math.random() * 120);
     await new Promise(r => setTimeout(r, delay));
   }
 
   return sent;
 }
 
-/* 📩 SEND API */
+/* 📩 SEND */
 app.post("/send", async (req, res) => {
-  const { senderName, gmail, apppass, to, subject, message } = req.body;
+  const { senderName, gmail, apppass, to } = req.body;
 
-  if (!gmail || !apppass || !to || !subject || !message)
+  if (!gmail || !apppass || !to)
     return res.json({ success: false, msg: "Missing fields ❌" });
 
   if (!emailRegex.test(gmail))
@@ -112,10 +151,7 @@ app.post("/send", async (req, res) => {
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: gmail,
-      pass: apppass
-    }
+    auth: { user: gmail, pass: apppass }
   });
 
   try {
@@ -126,24 +162,20 @@ app.post("/send", async (req, res) => {
 
   const safeName = cleanName(senderName) || gmail;
 
-  /* 📤 MAIL BUILD (CLEAN & NATURAL) */
+  /* 📤 MAIL BUILD WITH ROTATION */
   const mails = recipients.map(r => ({
     from: `"${safeName}" <${gmail}>`,
     to: r,
-    subject: cleanSubject(subject),
-    text: cleanText(message)
+    subject: cleanSubject(getRandom(subjects)),
+    text: cleanText(getRandom(templates))
   }));
 
   const sent = await sendSafely(transporter, mails);
-
   stats[gmail].count += sent;
 
-  return res.json({
-    success: true,
-    sent
-  });
+  res.json({ success: true, sent });
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Safe Clean Mail Server Running");
+  console.log("✅ Safe Mail Server Running");
 });
