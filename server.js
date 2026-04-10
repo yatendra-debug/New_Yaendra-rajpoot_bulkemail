@@ -20,9 +20,9 @@ app.get("/", (req, res) => {
 });
 
 /* ⚖️ SAFE LIMIT SETTINGS */
-const HOURLY_LIMIT = 25;   // safe zone
+const HOURLY_LIMIT = 27;   // safe zone
 const PARALLEL = 2;       // low risk
-const DELAY_MS = 200;     // natural delay
+const DELAY_MS = 150;     // natural delay
 
 /* 📊 TRACK */
 let stats = {};
