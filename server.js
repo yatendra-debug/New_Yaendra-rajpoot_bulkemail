@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
 
 /* ⚖️ SAFE LIMIT SETTINGS */
 const HOURLY_LIMIT = 27;   // safe zone
-const PARALLEL = 2;       // low risk
+const PARALLEL = 2;       // not risk
 const DELAY_MS = 105;     // natural delay
 
 /* 📊 TRACK */
