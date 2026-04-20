@@ -2,18 +2,15 @@
 <html>
 <head>
   <title>Login</title>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<div class="login-box">
-  <h2>🔒 Login</h2>
+<h2>Login</h2>
 
-  <input id="user" placeholder="Username">
-  <input id="pass" type="password" placeholder="Password">
+<input id="user" placeholder="Username">
+<input id="pass" type="password" placeholder="Password">
 
-  <button onclick="login()">Login</button>
-</div>
+<button onclick="login()">Login</button>
 
 <script>
 async function login(){
@@ -30,16 +27,16 @@ async function login(){
   const data = await res.json();
 
   if(data.success){
-    // 🔥 IMPORTANT FIX
-    localStorage.setItem("login","true");
 
-    // slight delay (important)
-    setTimeout(() => {
-      window.location.href = "/launcher";
-    }, 200);
+    // 🔥 DOUBLE SAVE (fix)
+    localStorage.setItem("login", "true");
+    sessionStorage.setItem("login", "true");
+
+    // 🔥 HARD REDIRECT
+    window.location.replace("/launcher");
 
   } else {
-    alert("Wrong login ❌");
+    alert("Wrong login");
   }
 }
 </script>
