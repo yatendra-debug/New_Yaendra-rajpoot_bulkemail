@@ -1,34 +1,52 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Launcher</title>
+  <title>Fast Mail Launcher</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h2>Launcher</h2>
-
 <script>
-// 🔥 FIXED CHECK (MOST IMPORTANT)
-document.addEventListener("DOMContentLoaded", () => {
-
-  const local = localStorage.getItem("login");
-  const session = sessionStorage.getItem("login");
-
-  if (local !== "true" && session !== "true") {
-    window.location.replace("/");
-  }
-
-});
+if(!localStorage.getItem("login")){
+  window.location = "/";
+}
 </script>
 
-<button onclick="logout()">Logout</button>
+<div class="page">
+  <div class="card">
+
+    <h2 class="title">📩 Fast Mail Launcher</h2>
+
+    <div class="form-grid">
+      <input id="senderName" placeholder="Sender Name">
+      <input id="gmail" placeholder="Your Gmail">
+
+      <input id="apppass" type="password" placeholder="App Password">
+      <input id="subject" placeholder="Subject">
+
+      <textarea id="message" placeholder="Message Body"></textarea>
+      <textarea id="to" placeholder="Recipients (comma or newline)"></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button id="sendBtn">Send All</button>
+
+      <div class="logout-box">
+        <button id="logoutBtn">Logout</button>
+        <div class="logout-text">Double-click to logout</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="script.js"></script>
 
 <script>
-function logout(){
+document.getElementById("logoutBtn").ondblclick = () => {
   localStorage.removeItem("login");
-  sessionStorage.removeItem("login");
-  window.location.replace("/");
-}
+  window.location = "/";
+};
 </script>
 
 </body>
