@@ -1,6 +1,7 @@
 import express from "express";
 import nodemailer from "nodemailer";
 import path from "path";
+import session from "express-session";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -8,28 +9,56 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 BASIC SECURITY */
+/* 🔐 SECURITY */
 app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
-/* 📁 STATIC FILES */
+/* 🔑 SESSION (IMPORTANT FIX) */
+app.use(session({
+  secret: "supersecretkey",
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+
+/* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
-/* 🏠 HOME ROUTE (IMPORTANT FIX) */
+/* 🏠 HOME → LOGIN */
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "launcher.html"));
+  if (req.session.loggedIn) {
+    return res.sendFile(path.join(__dirname, "public", "launcher.html"));
+  }
+  res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* ⚖️ SAFE LIMITS */
+/* 🔐 LOGIN API */
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+
+  // simple check (change if needed)
+  if (username === "admin" && password === "1234") {
+    req.session.loggedIn = true;
+    return res.json({ success: true });
+  }
+
+  res.json({ success: false });
+});
+
+/* 🔓 LOGOUT */
+app.get("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.redirect("/");
+  });
+});
+
+/* ⚖️ LIMITS */
 const HOURLY_LIMIT = 15;
-const DELAY = 12000; // 12 sec
+const DELAY = 12000;
 
 let stats = {};
-setInterval(() => {
-  stats = {};
-}, 60 * 60 * 1000);
+setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
-/* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 2000) =>
@@ -38,50 +67,40 @@ const clean = (t = "", max = 2000) =>
    .trim()
    .slice(0, max);
 
-/* 📤 SEND API */
+/* 📤 SEND (PROTECTED ROUTE) */
 app.post("/send", async (req, res) => {
+
+  if (!req.session.loggedIn) {
+    return res.status(401).json({ msg: "Login required ❌" });
+  }
+
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
   if (!gmail || !apppass || !to || !message) {
-    return res.json({ success: false, msg: "Missing fields ❌" });
+    return res.json({ success: false });
   }
 
   if (!emailRegex.test(gmail)) {
-    return res.json({ success: false, msg: "Invalid Gmail ❌" });
+    return res.json({ success: false });
   }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
-
   if (stats[gmail].count >= HOURLY_LIMIT) {
-    return res.json({ success: false, msg: "Hourly limit reached ❌" });
+    return res.json({ success: false });
   }
 
-  const recipients = to
-    .split(/,|\n/)
-    .map(r => r.trim())
-    .filter(r => emailRegex.test(r));
-
-  if (recipients.length === 0) {
-    return res.json({ success: false, msg: "No valid recipients ❌" });
-  }
+  const recipients = to.split(/,|\n/).map(r => r.trim()).filter(r => emailRegex.test(r));
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: gmail,
-      pass: apppass
-    }
+    auth: { user: gmail, pass: apppass }
   });
 
   try {
     await transporter.verify();
   } catch {
-    return res.json({ success: false, msg: "Login failed ❌" });
+    return res.json({ success: false });
   }
-
-  const safeName = clean(senderName || "Support", 50);
-  const safeSubject = clean(subject || "Hello", 100);
-  const safeMessage = clean(message, 2000);
 
   let sent = 0;
 
@@ -90,27 +109,24 @@ app.post("/send", async (req, res) => {
 
     try {
       await transporter.sendMail({
-        from: `"${safeName}" <${gmail}>`,
+        from: `"${clean(senderName || "Support")}" <${gmail}>`,
         to: r,
-        subject: safeSubject,
-        text: safeMessage,
+        subject: clean(subject || "Hello"),
+        text: clean(message),
         replyTo: gmail
       });
 
       sent++;
       stats[gmail].count++;
 
-      await new Promise(res => setTimeout(res, DELAY)); // ⏱ delay
-
-    } catch (err) {
-      console.log("Send fail:", err.message);
-    }
+      await new Promise(res => setTimeout(res, DELAY));
+    } catch {}
   }
 
-  return res.json({ success: true, sent });
+  res.json({ success: true, sent });
 });
 
-/* 🟢 START SERVER */
+/* 🚀 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Server Running Successfully");
+  console.log("✅ Login + Mail Server Running");
 });
