@@ -1,7 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
 
-  if (!sessionStorage.getItem("auth")) {
-    location.href = "/login.html";
+  // 🔥 LOGIN CHECK FIX
+  if (localStorage.getItem("login") !== "true") {
+    window.location.href = "/";
     return;
   }
 
@@ -10,17 +11,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const sendBtn = document.getElementById("sendBtn");
   const logoutBtn = document.getElementById("logoutBtn");
 
+  /* 🚀 SEND CLICK */
   sendBtn.addEventListener("click", () => {
     if (!sending) sendMail();
   });
 
+  /* 🔓 LOGOUT FIX */
   logoutBtn.addEventListener("dblclick", () => {
     if (!sending) {
-      sessionStorage.clear();
-      location.href = "/login.html";
+      localStorage.removeItem("login");
+      window.location.href = "/";
     }
   });
 
+  /* 📤 SEND MAIL */
   async function sendMail() {
     sending = true;
     sendBtn.disabled = true;
@@ -49,7 +53,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
       alert(`Send_1 ✅\nEmails Sent: ${data.sent}`);
 
-    } catch {
+    } catch (err) {
+      console.log(err);
       alert("Server error ❌");
     } finally {
       sending = false;
