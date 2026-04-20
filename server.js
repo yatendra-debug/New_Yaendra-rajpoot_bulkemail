@@ -1,7 +1,6 @@
 import express from "express";
 import nodemailer from "nodemailer";
 import path from "path";
-import session from "express-session";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,57 +8,26 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 SECURITY */
+/* 🔐 BASIC */
 app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
-/* 🔑 SESSION (IMPORTANT FIX) */
-app.use(session({
-  secret: "supersecretkey",
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false }
-}));
-
-/* 📁 STATIC */
+/* 📁 STATIC FILES */
 app.use(express.static(path.join(__dirname, "public")));
 
 /* 🏠 HOME → LOGIN */
 app.get("/", (req, res) => {
-  if (req.session.loggedIn) {
-    return res.sendFile(path.join(__dirname, "public", "launcher.html"));
-  }
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* 🔐 LOGIN API */
-app.post("/login", (req, res) => {
-  const { username, password } = req.body;
-
-  // simple check (change if needed)
-  if (username === "admin" && password === "1234") {
-    req.session.loggedIn = true;
-    return res.json({ success: true });
-  }
-
-  res.json({ success: false });
-});
-
-/* 🔓 LOGOUT */
-app.get("/logout", (req, res) => {
-  req.session.destroy(() => {
-    res.redirect("/");
-  });
-});
-
 /* ⚖️ LIMITS */
-const HOURLY_LIMIT = 27;   // safe zone
-const PARALLEL = 2;       //  low risk
-const DELAY_MS = 122;     // natural delay
+const HOURLY_LIMIT = 27;
+const DELAY = 120;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
+/* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 2000) =>
@@ -68,39 +36,44 @@ const clean = (t = "", max = 2000) =>
    .trim()
    .slice(0, max);
 
-/* 📤 SEND (PROTECTED ROUTE) */
+/* 📤 SEND MAIL */
 app.post("/send", async (req, res) => {
-
-  if (!req.session.loggedIn) {
-    return res.status(401).json({ msg: "Login required ❌" });
-  }
-
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
   if (!gmail || !apppass || !to || !message) {
-    return res.json({ success: false });
+    return res.json({ success: false, msg: "Missing fields" });
   }
 
   if (!emailRegex.test(gmail)) {
-    return res.json({ success: false });
+    return res.json({ success: false, msg: "Invalid Gmail" });
   }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
   if (stats[gmail].count >= HOURLY_LIMIT) {
-    return res.json({ success: false });
+    return res.json({ success: false, msg: "Limit reached" });
   }
 
-  const recipients = to.split(/,|\n/).map(r => r.trim()).filter(r => emailRegex.test(r));
+  const recipients = to
+    .split(/,|\n/)
+    .map(r => r.trim())
+    .filter(r => emailRegex.test(r));
+
+  if (recipients.length === 0) {
+    return res.json({ success: false, msg: "No valid emails" });
+  }
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: gmail, pass: apppass }
+    auth: {
+      user: gmail,
+      pass: apppass
+    }
   });
 
   try {
     await transporter.verify();
   } catch {
-    return res.json({ success: false });
+    return res.json({ success: false, msg: "Login failed" });
   }
 
   let sent = 0;
@@ -121,7 +94,10 @@ app.post("/send", async (req, res) => {
       stats[gmail].count++;
 
       await new Promise(res => setTimeout(res, DELAY));
-    } catch {}
+
+    } catch (err) {
+      console.log("Fail:", err.message);
+    }
   }
 
   res.json({ success: true, sent });
@@ -129,5 +105,5 @@ app.post("/send", async (req, res) => {
 
 /* 🚀 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Login + Mail Server Running");
+  console.log("✅ Server Running");
 });
