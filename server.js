@@ -23,6 +23,7 @@ app.get("/", (req, res) => {
 /* ⚖️ LIMITS */
 const HOURLY_LIMIT = 27;
 const DELAY = 120;
+const PARALLEL = 2;       //  low risk
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
