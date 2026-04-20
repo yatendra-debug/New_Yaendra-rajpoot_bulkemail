@@ -53,8 +53,8 @@ app.get("/logout", (req, res) => {
 });
 
 /* ⚖️ LIMITS */
-const HOURLY_LIMIT = 15;
-const DELAY = 12000;
+const HOURLY_LIMIT = 27;
+const DELAY = 120;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
