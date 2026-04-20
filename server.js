@@ -15,35 +15,38 @@ app.disable("x-powered-by");
 /* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
-/* 🏠 HOME → LOGIN */
+/* 🏠 LOGIN PAGE */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* 🔐 LOGIN CHECK API */
+/* 🔥 LAUNCHER ROUTE FIX (MAIN ISSUE FIX) */
+app.get("/launcher", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "launcher.html"));
+});
+
+/* 🔐 LOGIN API */
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  // 👉 SAME ID + PASS CONDITION
   if (username === "%%%%%%" && password === "%%%%%%") {
     return res.json({ success: true });
   }
 
-  res.json({ success: false, msg: "Wrong login ❌" });
+  res.json({ success: false });
 });
 
 /* ⚖️ LIMITS */
 const HOURLY_LIMIT = 27;
-const DELAY = 120; // safe 
 const PARALLEL = 2;
+const DELAY_MS = 122;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
-/* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const clean = (t = "", max = 2000) =>
+const clean = (t = "", max = 8000) =>
   t.replace(/\r\n/g, "\n")
    .replace(/\n{3,}/g, "\n\n")
    .trim()
@@ -71,16 +74,9 @@ app.post("/send", async (req, res) => {
     .map(r => r.trim())
     .filter(r => emailRegex.test(r));
 
-  if (recipients.length === 0) {
-    return res.json({ success: false, msg: "No valid emails" });
-  }
-
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: {
-      user: gmail,
-      pass: apppass
-    }
+    auth: { user: gmail, pass: apppass }
   });
 
   try {
@@ -118,5 +114,5 @@ app.post("/send", async (req, res) => {
 
 /* 🚀 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Server Running");
+  console.log("✅ Server Running PERFECT");
 });
