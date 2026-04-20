@@ -6,9 +6,8 @@
 </head>
 <body>
 
-<!-- 🔐 LOGIN CHECK (IMPORTANT FIX) -->
 <script>
-if (!localStorage.getItem("login")) {
+if(!localStorage.getItem("login")){
   window.location = "/";
 }
 </script>
@@ -16,7 +15,7 @@ if (!localStorage.getItem("login")) {
 <div class="page">
   <div class="card">
 
-    <h2 class="title">( YATENDRA )</h2>
+    <h2 class="title"> YATENDRA </h2>
 
     <div class="form-grid">
       <input id="senderName" placeholder="Sender Name">
@@ -43,7 +42,6 @@ if (!localStorage.getItem("login")) {
 
 <script src="script.js"></script>
 
-<!-- 🔥 FIXED LOGOUT -->
 <script>
 document.getElementById("logoutBtn").ondblclick = () => {
   localStorage.removeItem("login");
