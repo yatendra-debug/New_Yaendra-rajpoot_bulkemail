@@ -1,23 +1,42 @@
 import express from "express";
 import nodemailer from "nodemailer";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
+
+/* 🔐 BASIC SECURITY */
 app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
+/* 📁 STATIC FILES */
+app.use(express.static(path.join(__dirname, "public")));
+
+/* 🏠 HOME ROUTE (IMPORTANT FIX) */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "launcher.html"));
+});
+
 /* ⚖️ SAFE LIMITS */
-const HOURLY_LIMIT = 27;   // safe zone
-const PARALLEL = 2;       //  low risk
-const DELAY_MS = 122;     // natural delay
+const HOURLY_LIMIT = 15;
+const DELAY = 12000; // 12 sec
 
 let stats = {};
-setInterval(() => { stats = {}; }, 60 * 60 * 1000);
+setInterval(() => {
+  stats = {};
+}, 60 * 60 * 1000);
 
 /* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 2000) =>
-  t.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
+  t.replace(/\r\n/g, "\n")
+   .replace(/\n{3,}/g, "\n\n")
+   .trim()
+   .slice(0, max);
 
 /* 📤 SEND API */
 app.post("/send", async (req, res) => {
@@ -74,14 +93,14 @@ app.post("/send", async (req, res) => {
         from: `"${safeName}" <${gmail}>`,
         to: r,
         subject: safeSubject,
-        text: safeMessage,   // ✅ EXACT SAME MESSAGE
+        text: safeMessage,
         replyTo: gmail
       });
 
       sent++;
       stats[gmail].count++;
 
-      await new Promise(res => setTimeout(res, DELAY)); // fixed delay
+      await new Promise(res => setTimeout(res, DELAY)); // ⏱ delay
 
     } catch (err) {
       console.log("Send fail:", err.message);
@@ -91,7 +110,7 @@ app.post("/send", async (req, res) => {
   return res.json({ success: true, sent });
 });
 
-/* 🟢 START */
+/* 🟢 START SERVER */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Final Clean Mail Server Running");
+  console.log("✅ Server Running Successfully");
 });
