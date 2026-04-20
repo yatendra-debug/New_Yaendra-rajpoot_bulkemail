@@ -12,7 +12,7 @@ const app = express();
 app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
-/* 📁 STATIC FILES */
+/* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
 /* 🏠 HOME → LOGIN */
@@ -20,9 +20,21 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
+/* 🔐 LOGIN CHECK API */
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+
+  // 👉 SAME ID + PASS CONDITION
+  if (username === "%%%%%%" && password === "%%%%%%") {
+    return res.json({ success: true });
+  }
+
+  res.json({ success: false, msg: "Wrong login ❌" });
+});
+
 /* ⚖️ LIMITS */
 const HOURLY_LIMIT = 27;
-const DELAY = 120;
+const DELAY = 120; // safe 
 const PARALLEL = 2;
 
 let stats = {};
