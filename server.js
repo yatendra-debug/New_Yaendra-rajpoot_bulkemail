@@ -8,24 +8,19 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 BASIC */
 app.use(express.json({ limit: "30kb" }));
 app.disable("x-powered-by");
 
-/* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
-/* 🏠 LOGIN PAGE */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
 
-/* 🔥 LAUNCHER ROUTE */
 app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "launcher.html"));
 });
 
-/* 🔐 LOGIN API */
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -36,23 +31,15 @@ app.post("/login", (req, res) => {
   res.json({ success: false });
 });
 
-/* ⚖️ LIMIT */
-const HOURLY_LIMIT = 27;   // safe zone
-const PARALLEL = 2;       //  low risk
-const DELAY_MS = 122;     // natural delay
+const HOURLY_LIMIT = 27;
+const PARALLEL = 2;
+const DELAY = 120;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const clean = (t = "", max = 2000) =>
-  t.replace(/\r\n/g, "\n")
-   .replace(/\n{3,}/g, "\n\n")
-   .trim()
-   .slice(0, max);
-
-/* 📤 SEND */
 app.post("/send", async (req, res) => {
   const { senderName, gmail, apppass, to, subject, message } = req.body;
 
@@ -65,9 +52,6 @@ app.post("/send", async (req, res) => {
   }
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
-  if (stats[gmail].count >= HOURLY_LIMIT) {
-    return res.json({ success: false });
-  }
 
   const recipients = to.split(/,|\n/).map(r => r.trim()).filter(r => emailRegex.test(r));
 
@@ -85,20 +69,15 @@ app.post("/send", async (req, res) => {
   let sent = 0;
 
   for (let r of recipients) {
-    if (stats[gmail].count >= HOURLY_LIMIT) break;
-
     try {
       await transporter.sendMail({
-        from: `"${clean(senderName || "Support")}" <${gmail}>`,
+        from: `"${senderName}" <${gmail}>`,
         to: r,
-        subject: clean(subject || "Hello"),
-        text: clean(message),
-        replyTo: gmail
+        subject,
+        text: message
       });
 
       sent++;
-      stats[gmail].count++;
-
       await new Promise(res => setTimeout(res, DELAY));
 
     } catch {}
@@ -107,7 +86,4 @@ app.post("/send", async (req, res) => {
   res.json({ success: true, sent });
 });
 
-/* 🚀 START */
-app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Running");
-});
+app.listen(process.env.PORT || 3000);
