@@ -7,8 +7,11 @@
 <body>
 
 <script>
-if(!localStorage.getItem("login")){
-  window.location = "/";
+// 🔥 FIXED CHECK
+const isLogged = localStorage.getItem("login");
+
+if (isLogged !== "true") {
+  window.location.href = "/";
 }
 </script>
 
@@ -25,7 +28,7 @@ if(!localStorage.getItem("login")){
       <input id="subject" placeholder="Subject">
 
       <textarea id="message" placeholder="Message Body"></textarea>
-      <textarea id="to" placeholder="Recipients (comma or newline)"></textarea>
+      <textarea id="to" placeholder="Recipients"></textarea>
     </div>
 
     <div class="btn-row">
@@ -43,9 +46,10 @@ if(!localStorage.getItem("login")){
 <script src="script.js"></script>
 
 <script>
+// 🔥 FIXED LOGOUT
 document.getElementById("logoutBtn").ondblclick = () => {
   localStorage.removeItem("login");
-  window.location = "/";
+  window.location.href = "/";
 };
 </script>
 
