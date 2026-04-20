@@ -53,8 +53,9 @@ app.get("/logout", (req, res) => {
 });
 
 /* ⚖️ LIMITS */
-const HOURLY_LIMIT = 27;
-const DELAY = 120;
+const HOURLY_LIMIT = 27;   // safe zone
+const PARALLEL = 2;       //  low risk
+const DELAY_MS = 122;     // natural delay
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
