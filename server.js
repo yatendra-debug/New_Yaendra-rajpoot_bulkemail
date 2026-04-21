@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 BASIC SECURITY */
+/* 🔐 BASIC */
 app.disable("x-powered-by");
 app.use(express.json({ limit: "25kb" }));
 
@@ -24,21 +24,19 @@ app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "launcher.html"));
 });
 
-/* 🔐 LOGIN API */
+/* 🔐 LOGIN */
 app.post("/login", (req, res) => {
   const { username, password } = req.body || {};
-
   if (username === "%%%%%%" && password === "%%%%%%") {
     return res.json({ success: true });
   }
-
-  return res.json({ success: false, msg: "Invalid login" });
+  res.json({ success: false });
 });
 
-/* ⚖️ SAFE LIMITS */
-const HOURLY_LIMIT = 27;   // safe cap per gmail/hour
-const PARALLEL = 2;       //  gap
-const DELAY = 120;       // transporter verify timeout
+/* ⚖️ SAFE LIMITS (KEEP LOW) */
+const HOURLY_LIMIT = 27;  
+const PARALLEL = 2;
+const DELAY = 120;
 
 let usage = {};
 setInterval(() => { usage = {}; }, 60 * 60 * 1000);
@@ -52,16 +50,13 @@ const clean = (t = "", max = 2000) =>
    .trim()
    .slice(0, max);
 
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* 📤 SEND API */
+/* 📤 SEND */
 app.post("/send", async (req, res) => {
   try {
     const { senderName, gmail, apppass, to, subject, message } = req.body || {};
 
-    /* ❌ BASIC VALIDATION */
     if (!gmail || !apppass || !to || !message) {
       return res.json({ success: false, msg: "Missing fields" });
     }
@@ -70,72 +65,62 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Invalid Gmail" });
     }
 
-    /* 📊 LIMIT TRACK */
     if (!usage[gmail]) usage[gmail] = { count: 0 };
-
     if (usage[gmail].count >= HOURLY_LIMIT) {
-      return res.json({ success: false, msg: "Hourly limit reached" });
+      return res.json({ success: false, msg: "Limit reached" });
     }
 
-    /* 📬 RECIPIENT CLEAN */
     const recipients = to
       .split(/,|\n/)
       .map(r => r.trim())
       .filter(r => emailRegex.test(r));
 
     if (!recipients.length) {
-      return res.json({ success: false, msg: "No valid recipients" });
+      return res.json({ success: false, msg: "No valid emails" });
     }
 
-    const remaining = HOURLY_LIMIT - usage[gmail].count;
-    const finalList = recipients.slice(0, remaining);
-
-    /* 📡 TRANSPORTER */
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: { user: gmail, pass: apppass }
     });
 
-    /* 🔍 VERIFY (SAFE) */
-    const verifyPromise = transporter.verify();
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Verify timeout")), VERIFY_TIMEOUT)
-    );
-
     try {
-      await Promise.race([verifyPromise, timeout]);
+      await transporter.verify();
     } catch {
-      return res.json({ success: false, msg: "Gmail login failed" });
+      return res.json({ success: false, msg: "Login failed" });
     }
 
-    /* 📤 SENDING LOOP (SEQUENTIAL) */
     let sent = 0;
 
-    for (const r of finalList) {
+    for (const r of recipients) {
+      if (usage[gmail].count >= HOURLY_LIMIT) break;
+
       try {
         await transporter.sendMail({
-          from: `"${clean(senderName || "Support", 60)}" <${gmail}>`,
+          from: `"${clean(senderName || "Support")}" <${gmail}>`,
           to: r,
-          subject: clean(subject || "Hello", 120),
-          text: clean(message, 3000),
+          subject: clean(subject || "Hello"),
+
+          // 🔥 CLEAN TEXT (NO SPAMMY FORMAT)
+          text: clean(message) + "\n\n—\nIf you prefer not to receive emails, please ignore this message.",
+
           replyTo: gmail
         });
 
         sent++;
         usage[gmail].count++;
 
-        await sleep(DELAY_MS); // ⏱️ natural gap
+        await sleep(DELAY_MS);
 
       } catch (err) {
         console.log("Send error:", err.message);
       }
     }
 
-    return res.json({ success: true, sent });
+    res.json({ success: true, sent });
 
   } catch (err) {
-    console.log("Server error:", err.message);
-    return res.json({ success: false, msg: "Server error" });
+    res.json({ success: false, msg: "Server error" });
   }
 });
 
