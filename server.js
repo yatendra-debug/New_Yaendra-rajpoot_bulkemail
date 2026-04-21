@@ -33,10 +33,11 @@ app.post("/login", (req, res) => {
   res.json({ success: false });
 });
 
-/* ⚖️ SAFE LIMITS (KEEP LOW) */
-const HOURLY_LIMIT = 27;
+/* ⚖️ SAFE LIMITS */
+const HOURLY_LIMIT = 27;  
 const PARALLEL = 2;
 const DELAY = 120;
+
 
 let usage = {};
 setInterval(() => { usage = {}; }, 60 * 60 * 1000);
@@ -101,8 +102,8 @@ app.post("/send", async (req, res) => {
           to: r,
           subject: clean(subject || "Hello"),
 
-          // 🔥 CLEAN TEXT (NO SPAMMY FORMAT)
-          text: clean(message) + "\n\n—\n
+          // 🔥 NO EXTRA LINE — EXACT TEMPLATE ONLY
+          text: clean(message),
 
           replyTo: gmail
         });
