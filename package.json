@@ -1,5 +1,5 @@
 {
-  "name": "safe-mailer",
+  "name": "mailer",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
