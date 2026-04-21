@@ -8,15 +8,17 @@
 
 <div class="login-box">
   <h2>🔐 Login</h2>
+
   <input id="user" placeholder="Username">
   <input id="pass" type="password" placeholder="Password">
+
   <button onclick="login()">Login</button>
 </div>
 
 <script>
 async function login() {
-  const username = user.value;
-  const password = pass.value;
+  const username = document.getElementById("user").value;
+  const password = document.getElementById("pass").value;
 
   const res = await fetch("/login", {
     method: "POST",
@@ -27,8 +29,8 @@ async function login() {
   const data = await res.json();
 
   if (data.success) {
-    sessionStorage.setItem("auth","true");
-    location.href="/launcher";
+    sessionStorage.setItem("auth", "true");
+    window.location.href = "/launcher";
   } else {
     alert("Wrong login ❌");
   }
