@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Safe Mail Launcher</title>
+  <title>Launcher</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <script>
-if(!localStorage.getItem("login")){
+if (!sessionStorage.getItem("auth")) {
   window.location = "/";
 }
 </script>
@@ -15,7 +15,7 @@ if(!localStorage.getItem("login")){
 <div class="page">
   <div class="card">
 
-    <h2 class="title"> YATENDRA </h2>
+    <h2 class="title">Fast Mail Launcher</h2>
 
     <div class="form-grid">
       <input id="senderName" placeholder="Sender Name">
@@ -24,17 +24,13 @@ if(!localStorage.getItem("login")){
       <input id="apppass" type="password" placeholder="App Password">
       <input id="subject" placeholder="Subject">
 
-      <textarea id="message" placeholder="Message Body"></textarea>
-      <textarea id="to" placeholder="Recipients (comma or newline)"></textarea>
+      <textarea id="message" placeholder="Message"></textarea>
+      <textarea id="to" placeholder="Recipients"></textarea>
     </div>
 
     <div class="btn-row">
       <button id="sendBtn">Send All</button>
-
-      <div class="logout-box">
-        <button id="logoutBtn">Logout</button>
-        <div class="logout-text">Double-click to logout</div>
-      </div>
+      <button onclick="logout()">Logout</button>
     </div>
 
   </div>
@@ -43,10 +39,10 @@ if(!localStorage.getItem("login")){
 <script src="script.js"></script>
 
 <script>
-document.getElementById("logoutBtn").ondblclick = () => {
-  localStorage.removeItem("login");
+function logout(){
+  sessionStorage.clear();
   window.location = "/";
-};
+}
 </script>
 
 </body>
