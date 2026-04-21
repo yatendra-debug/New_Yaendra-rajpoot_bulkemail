@@ -79,6 +79,10 @@ app.post("/send", async (req, res) => {
       .map(r => r.trim())
       .filter(r => emailRegex.test(r));
 
+    if (!recipients.length) {
+      return res.json({ success: false, msg: "No valid emails" });
+    }
+
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
