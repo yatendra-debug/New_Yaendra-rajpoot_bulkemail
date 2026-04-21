@@ -1,4 +1,4 @@
-document.getElementById("sendBtn").onclick = async () => {
+document.getElementById("sendBtn").addEventListener("click", async () => {
 
   const res = await fetch("/send", {
     method: "POST",
@@ -15,9 +15,9 @@ document.getElementById("sendBtn").onclick = async () => {
 
   const data = await res.json();
 
-  if (!data.success) {
-    alert(data.msg);
+  if (data.success) {
+    alert("Sent: " + data.sent);
   } else {
-    alert("Emails Sent: " + data.sent);
+    alert(data.msg);
   }
-};
+});
