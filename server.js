@@ -11,44 +11,46 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* BASIC */
-app.use(express.json({ limit: "30kb" }));
-app.disable("x-powered-by");
-
-/* STATIC */
+app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ROUTES */
+/* ================= LOGIN FIX ================= */
+
+/* fallback credentials (IMPORTANT FIX) */
+const USER = process.env.APP_USER || "@#@#";
+const PASS = process.env.APP_PASS || "@#@#";
+
+/* HOME */
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "login.html"));
+  res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
+/* LAUNCHER */
 app.get("/launcher", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "launcher.html"));
+  res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* LOGIN */
+/* LOGIN API */
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  if (
-    username === process.env.APP_USER &&
-    password === process.env.APP_PASS
-  ) {
+  console.log("LOGIN TRY:", username, password);
+
+  if (username === USER && password === PASS) {
     return res.json({ success: true });
   }
 
-  res.json({ success: false });
+  return res.json({ success: false });
 });
 
-/* LIMITS */
+/* ================= MAIL ================= */
+
 const HOURLY_LIMIT = 27;
 const DELAY = 120;
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
-/* EMAIL */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 app.post("/send", async (req, res) => {
@@ -80,7 +82,7 @@ app.post("/send", async (req, res) => {
   try {
     await transporter.verify();
   } catch {
-    return res.json({ success: false, msg: "Login failed" });
+    return res.json({ success: false, msg: "Gmail login failed" });
   }
 
   let sent = 0;
@@ -99,10 +101,10 @@ app.post("/send", async (req, res) => {
       sent++;
       stats[gmail].count++;
 
-      await new Promise(res => setTimeout(res, DELAY));
+      await new Promise(r => setTimeout(r, DELAY));
 
     } catch (err) {
-      console.log(err.message);
+      console.log("Mail error:", err.message);
     }
   }
 
@@ -111,5 +113,6 @@ app.post("/send", async (req, res) => {
 
 /* START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Server Running");
+  console.log("✅ SERVER RUNNING");
+  console.log("LOGIN:", USER, PASS);
 });
