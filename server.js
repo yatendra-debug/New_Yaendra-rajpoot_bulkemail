@@ -39,7 +39,7 @@ app.post("/login", (req, res) => {
 
 /* MAIL (same as before) */
 const HOURLY_LIMIT = 27;  
-const PARALLEL = 1;
+const PARALLEL = 2.5;
 const DELAY = 120;
 
 let stats = {};
