@@ -18,6 +18,6 @@ document.getElementById("sendBtn").onclick = async () => {
   if (!data.success) {
     alert(data.msg);
   } else {
-    alert("Sent: " + data.sent);
+    alert("Emails Sent: " + data.sent);
   }
 };
