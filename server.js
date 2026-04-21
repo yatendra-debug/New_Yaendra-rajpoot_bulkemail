@@ -1,22 +1,19 @@
 import express from "express";
 import nodemailer from "nodemailer";
-import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 BASIC */
+/* BASIC */
 app.disable("x-powered-by");
 app.use(express.json({ limit: "50kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-/* 🏠 ROUTES */
+/* ROUTES */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
@@ -25,9 +22,9 @@ app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "launcher.html"));
 });
 
-/* 🔐 LOGIN */
+/* LOGIN */
 app.post("/login", (req, res) => {
-  const { username, password } = req.body || {};
+  const { username, password } = req.body;
 
   if (
     username === process.env.APP_USER &&
@@ -39,28 +36,26 @@ app.post("/login", (req, res) => {
   return res.json({ success: false });
 });
 
-/* ⚖️ SETTINGS (ENV BASED) */
-const HOURLY_LIMIT = Number(process.env.HOURLY_LIMIT || 25);
-const PARALLEL = Number(process.env.PARALLEL || 2);
-const BASE_DELAY = Number(process.env.BASE_DELAY || 1200);
-const JITTER = Number(process.env.JITTER || 800);
+/* LIMIT */
+const HOURLY_LIMIT = 27;
+const PARALLEL = 2;
+const DELAY = 120;
 
-let usage = {};
-setInterval(() => { usage = {}; }, 60 * 60 * 1000);
+let stats = {};
+setInterval(() => { stats = {}; }, 60 * 60 * 1000);
 
-/* 🧪 HELPERS */
+/* HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const clean = (t = "", max = 3000) =>
+const clean = (t = "") =>
   t.replace(/\r\n/g, "\n")
    .replace(/\n{3,}/g, "\n\n")
    .trim()
-   .slice(0, max);
+   .slice(0, 3000);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const delay = () => BASE_DELAY + Math.floor(Math.random() * JITTER);
 
-/* 📤 SEND */
+/* SEND */
 app.post("/send", async (req, res) => {
   try {
     const { senderName, gmail, apppass, to, subject, message } = req.body;
@@ -73,9 +68,9 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Invalid Gmail" });
     }
 
-    if (!usage[gmail]) usage[gmail] = 0;
+    if (!stats[gmail]) stats[gmail] = 0;
 
-    if (usage[gmail] >= HOURLY_LIMIT) {
+    if (stats[gmail] >= HOURLY_LIMIT) {
       return res.json({ success: false, msg: "Limit reached" });
     }
 
@@ -83,10 +78,6 @@ app.post("/send", async (req, res) => {
       .split(/,|\n/)
       .map(r => r.trim())
       .filter(r => emailRegex.test(r));
-
-    if (!recipients.length) {
-      return res.json({ success: false, msg: "No valid emails" });
-    }
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -96,18 +87,11 @@ app.post("/send", async (req, res) => {
       }
     });
 
-    try {
-      await transporter.verify();
-    } catch (err) {
-      console.log("Verify error:", err.message);
-      return res.json({ success: false, msg: "Gmail login failed" });
-    }
+    await transporter.verify();
 
     let sent = 0;
 
     for (let i = 0; i < recipients.length; i += PARALLEL) {
-      if (usage[gmail] >= HOURLY_LIMIT) break;
-
       const batch = recipients.slice(i, i + PARALLEL);
 
       await Promise.all(
@@ -122,26 +106,26 @@ app.post("/send", async (req, res) => {
             });
 
             sent++;
-            usage[gmail]++;
+            stats[gmail]++;
 
           } catch (err) {
-            console.log("Send fail:", err.message);
+            console.log("Fail:", err.message);
           }
         })
       );
 
-      await sleep(delay());
+      await sleep(DELAY);
     }
 
-    return res.json({ success: true, sent });
+    res.json({ success: true, sent });
 
   } catch (err) {
-    console.log("SERVER ERROR:", err.message);
-    return res.json({ success: false, msg: "Server error" });
+    console.log(err.message);
+    res.json({ success: false, msg: "Server error" });
   }
 });
 
-/* 🚀 START */
+/* START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Server running");
+  console.log("Server running");
 });
