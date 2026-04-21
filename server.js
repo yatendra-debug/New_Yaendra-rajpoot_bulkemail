@@ -8,14 +8,10 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-/* 🔐 BASIC */
 app.disable("x-powered-by");
 app.use(express.json({ limit: "25kb" }));
-
-/* 📁 STATIC */
 app.use(express.static(path.join(__dirname, "public")));
 
-/* 🏠 ROUTES */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
@@ -33,16 +29,14 @@ app.post("/login", (req, res) => {
   res.json({ success: false });
 });
 
-/* ⚖️ SAFE LIMITS */
+/* ⚖️ SAFE LIMIT */
 const HOURLY_LIMIT = 27;  
 const PARALLEL = 2;
 const DELAY = 120;
 
-
 let usage = {};
 setInterval(() => { usage = {}; }, 60 * 60 * 1000);
 
-/* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 2000) =>
@@ -56,27 +50,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* 📤 SEND */
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, gmail, apppass, to, subject, message } = req.body || {};
+    const { senderName, gmail, apppass, to, subject, message } = req.body;
 
     if (!gmail || !apppass || !to || !message) {
       return res.json({ success: false, msg: "Missing fields" });
     }
 
     if (!emailRegex.test(gmail)) {
-      return res.json({ success: false, msg: "Invalid Gmail" });
+      return res.json({ success: false, msg: "Invalid email" });
     }
 
-    if (!usage[gmail]) usage[gmail] = { count: 0 };
-    if (usage[gmail].count >= HOURLY_LIMIT) {
+    if (!usage[gmail]) usage[gmail] = 0;
+    if (usage[gmail] >= LIMIT) {
       return res.json({ success: false, msg: "Limit reached" });
     }
 
-    const recipients = to
+    const list = to
       .split(/,|\n/)
-      .map(r => r.trim())
-      .filter(r => emailRegex.test(r));
+      .map(e => e.trim())
+      .filter(e => emailRegex.test(e));
 
-    if (!recipients.length) {
+    if (!list.length) {
       return res.json({ success: false, msg: "No valid emails" });
     }
 
@@ -85,47 +79,41 @@ app.post("/send", async (req, res) => {
       auth: { user: gmail, pass: apppass }
     });
 
-    try {
-      await transporter.verify();
-    } catch {
-      return res.json({ success: false, msg: "Login failed" });
-    }
+    await transporter.verify();
 
     let sent = 0;
 
-    for (const r of recipients) {
-      if (usage[gmail].count >= HOURLY_LIMIT) break;
+    for (const r of list) {
+      if (usage[gmail] >= LIMIT) break;
 
       try {
         await transporter.sendMail({
-          from: `"${clean(senderName || "Support")}" <${gmail}>`,
+          from: `"${clean(senderName || "Hello")}" <${gmail}>`,
           to: r,
-          subject: clean(subject || "Hello"),
+          subject: clean(subject || "Quick question"),
 
-          // 🔥 NO EXTRA LINE — EXACT TEMPLATE ONLY
+          // 🔥 PURE CLEAN MESSAGE (NO TRICKS)
           text: clean(message),
 
           replyTo: gmail
         });
 
         sent++;
-        usage[gmail].count++;
+        usage[gmail]++;
+        await sleep(DELAY);
 
-        await sleep(DELAY_MS);
-
-      } catch (err) {
-        console.log("Send error:", err.message);
+      } catch (e) {
+        console.log("Fail:", e.message);
       }
     }
 
     res.json({ success: true, sent });
 
-  } catch (err) {
+  } catch {
     res.json({ success: false, msg: "Server error" });
   }
 });
 
-/* 🚀 START */
 app.listen(process.env.PORT || 3000, () => {
   console.log("✅ Clean Mail Server Running");
 });
