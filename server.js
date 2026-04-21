@@ -34,7 +34,7 @@ app.post("/login", (req, res) => {
 const HOURLY_LIMIT = 27  // 20–30 safe range
 const PARALLEL = 2;        // 2 at a time
 const BASE_DELAY = 120;   // 
-const JITTER = 400;        // +0–800ms random gap
+const JITTER = 400;        // +0–400ms random gap
 const MAX_RETRIES = 2;     // retry temp failures
 
 let usage = {};
