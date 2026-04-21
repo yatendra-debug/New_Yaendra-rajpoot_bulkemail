@@ -34,9 +34,9 @@ app.post("/login", (req, res) => {
 });
 
 /* ⚖️ SAFE LIMITS (KEEP LOW) */
-const HOURLY_LIMIT = 27; 🔴
-const PARALLEL = 2; 🔴
-const DELAY = 120; 🔴
+const HOURLY_LIMIT = 27;
+const PARALLEL = 2;
+const DELAY = 120;
 
 let usage = {};
 setInterval(() => { usage = {}; }, 60 * 60 * 1000);
