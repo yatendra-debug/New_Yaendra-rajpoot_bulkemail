@@ -1,48 +1,47 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Launcher</title>
+  <title>Safe Mail Launcher</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <script>
 if (!sessionStorage.getItem("auth")) {
-  location.href = "/";
+  location.href = "/login.html";
 }
 </script>
 
 <div class="page">
   <div class="card">
 
-    <h2 class="title">Fast Mail Launcher</h2>
+    <h2 class="title">📨 YATENDRA _ LODHI</h2>
 
     <div class="form-grid">
+
       <input id="senderName" placeholder="Sender Name">
       <input id="gmail" placeholder="Your Gmail">
 
       <input id="apppass" type="password" placeholder="App Password">
       <input id="subject" placeholder="Subject">
 
-      <textarea id="message" placeholder="Message"></textarea>
-      <textarea id="to" placeholder="Recipients"></textarea>
+      <textarea id="message" placeholder="Message Body"></textarea>
+      <textarea id="to" placeholder="Recipients (comma or newline)"></textarea>
+
     </div>
 
     <div class="btn-row">
       <button id="sendBtn">Send All</button>
-      <button onclick="logout()">Logout</button>
+
+      <div class="logout-box">
+        <button id="logoutBtn">Logout</button>
+        <div class="logout-text">Double-click to logout</div>
+      </div>
     </div>
 
   </div>
 </div>
 
 <script src="script.js"></script>
-<script>
-function logout(){
-  sessionStorage.clear();
-  location.href="/";
-}
-</script>
-
 </body>
 </html>
