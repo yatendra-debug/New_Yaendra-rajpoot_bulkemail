@@ -2,41 +2,35 @@
 <html>
 <head>
   <title>Login</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<h2>Login</h2>
-
-<input id="user" placeholder="Username">
-<input id="pass" type="password" placeholder="Password">
-
-<button onclick="login()">Login</button>
+<div class="login-box">
+  <h2>🔐 Login</h2>
+  <input id="user" placeholder="Username">
+  <input id="pass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
 
 <script>
-async function login(){
+async function login() {
+  const username = document.getElementById("user").value;
+  const password = document.getElementById("pass").value;
 
-  const res = await fetch("/login",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({
-      username: user.value,
-      password: pass.value
-    })
+  const res = await fetch("/login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ username, password })
   });
 
   const data = await res.json();
 
-  if(data.success){
-
-    // 🔥 DOUBLE SAVE (fix)
-    localStorage.setItem("login", "true");
-    sessionStorage.setItem("login", "true");
-
-    // 🔥 HARD REDIRECT
-    window.location.replace("/launcher");
-
+  if (data.success) {
+    sessionStorage.setItem("auth", "true");
+    window.location = "/launcher";
   } else {
-    alert("Wrong login");
+    alert("Wrong login ❌");
   }
 }
 </script>
