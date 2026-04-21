@@ -2,9 +2,6 @@ import express from "express";
 import nodemailer from "nodemailer";
 import path from "path";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
-
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,27 +11,24 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-/* ================= LOGIN FIX ================= */
+/* 🔐 DIRECT LOGIN FIX (NO ENV) */
+const USER = "@#@#";
+const PASS = "@#@#";
 
-/* fallback credentials (IMPORTANT FIX) */
-const USER = process.env.APP_USER || "@#@#";
-const PASS = process.env.APP_PASS || "@#@#";
-
-/* HOME */
+/* ROUTES */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
 
-/* LAUNCHER */
 app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* LOGIN API */
+/* LOGIN */
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
-  console.log("LOGIN TRY:", username, password);
+  console.log("LOGIN:", username, password);
 
   if (username === USER && password === PASS) {
     return res.json({ success: true });
@@ -43,8 +37,7 @@ app.post("/login", (req, res) => {
   return res.json({ success: false });
 });
 
-/* ================= MAIL ================= */
-
+/* MAIL (same as before) */
 const HOURLY_LIMIT = 27;
 const DELAY = 120;
 
@@ -66,10 +59,7 @@ app.post("/send", async (req, res) => {
 
   if (!stats[gmail]) stats[gmail] = { count: 0 };
 
-  const recipients = to
-    .split(/,|\n/)
-    .map(r => r.trim())
-    .filter(r => emailRegex.test(r));
+  const recipients = to.split(/,|\n/).map(r => r.trim()).filter(r => emailRegex.test(r));
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -82,7 +72,7 @@ app.post("/send", async (req, res) => {
   try {
     await transporter.verify();
   } catch {
-    return res.json({ success: false, msg: "Gmail login failed" });
+    return res.json({ success: false, msg: "Login failed" });
   }
 
   let sent = 0;
@@ -101,18 +91,14 @@ app.post("/send", async (req, res) => {
       sent++;
       stats[gmail].count++;
 
-      await new Promise(r => setTimeout(r, DELAY));
+      await new Promise(res => setTimeout(res, DELAY));
 
     } catch (err) {
-      console.log("Mail error:", err.message);
+      console.log(err.message);
     }
   }
 
   res.json({ success: true, sent });
 });
 
-/* START */
-app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ SERVER RUNNING");
-  console.log("LOGIN:", USER, PASS);
-});
+app.listen(3000, () => console.log("✅ RUNNING"));
