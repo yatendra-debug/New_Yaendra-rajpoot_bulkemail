@@ -102,7 +102,7 @@ app.post("/send", async (req, res) => {
           subject: clean(subject || "Hello"),
 
           // 🔥 CLEAN TEXT (NO SPAMMY FORMAT)
-          text: clean(message) + "\n\n—\nIf you prefer not to receive emails, please ignore this message.",
+          text: clean(message) + "\n\n—\n
 
           replyTo: gmail
         });
