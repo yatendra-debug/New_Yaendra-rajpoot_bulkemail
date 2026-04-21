@@ -8,14 +8,14 @@
 
 <script>
 if (!sessionStorage.getItem("auth")) {
-  window.location = "/";
+  location.href="/";
 }
 </script>
 
 <div class="page">
   <div class="card">
 
-    <h2 class="title">Fast Mail Launcher</h2>
+    <h2 class="title">YATENDRA</h2>
 
     <div class="form-grid">
       <input id="senderName" placeholder="Sender Name">
@@ -41,7 +41,7 @@ if (!sessionStorage.getItem("auth")) {
 <script>
 function logout(){
   sessionStorage.clear();
-  window.location = "/";
+  location.href="/";
 }
 </script>
 
