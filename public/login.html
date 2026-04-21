@@ -15,8 +15,8 @@
 
 <script>
 async function login() {
-  const username = document.getElementById("user").value;
-  const password = document.getElementById("pass").value;
+  const username = user.value;
+  const password = pass.value;
 
   const res = await fetch("/login", {
     method: "POST",
@@ -27,8 +27,8 @@ async function login() {
   const data = await res.json();
 
   if (data.success) {
-    sessionStorage.setItem("auth", "true");
-    window.location = "/launcher";
+    sessionStorage.setItem("auth","true");
+    location.href="/launcher";
   } else {
     alert("Wrong login ❌");
   }
