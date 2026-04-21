@@ -17,7 +17,6 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "login.html"));
 });
-
 app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "launcher.html"));
 });
@@ -28,16 +27,18 @@ app.post("/login", (req, res) => {
   if (username === "%%%%%%" && password === "%%%%%%") {
     return res.json({ success: true });
   }
-  res.json({ success: false });
+  return res.json({ success: false });
 });
 
-/* ⚖️ SETTINGS */
-const HOURLY_LIMIT = 27;
-const PARALLEL = 2;
-const DELAY = 150; // 
+/* ⚖️ SETTINGS (low-risk defaults) */
+const HOURLY_LIMIT = 27  // 20–30 safe range
+const PARALLEL = 2;        // 2 at a time
+const BASE_DELAY = 120;   // 
+const JITTER = 400;        // +0–800ms random gap
+const MAX_RETRIES = 2;     // retry temp failures
 
-let stats = {};
-setInterval(() => { stats = {}; }, 60 * 60 * 1000);
+let usage = {};
+setInterval(() => { usage = {}; }, 60 * 60 * 1000);
 
 /* 🧪 HELPERS */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -50,17 +51,22 @@ const clean = (t = "", max = 3000) =>
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* 🔤 OPTIONAL SANITIZER (simple tone softening, not bypass) */
+const randDelay = () => BASE_DELAY + Math.floor(Math.random() * JITTER);
+
+function uniqueValid(list) {
+  const set = new Set();
+  return list
+    .map(e => e.trim().toLowerCase())
+    .filter(e => emailRegex.test(e) && !set.has(e) && set.add(e));
+}
+
+/* 🔤 OPTIONAL SOFT TONE (not bypass) */
 const WORD_MAP = {
   "urgent": "quick",
   "free": "no-cost",
   "guarantee": "help",
-  "offer": "info",
-  "price": "details",
-  "click here": "see more",
-  "limited": "few",
+  "offer": "limited",
 };
-
 function sanitize(text) {
   let out = text;
   for (const [bad, good] of Object.entries(WORD_MAP)) {
@@ -70,67 +76,80 @@ function sanitize(text) {
   return out;
 }
 
-/* 📤 PARALLEL SEND */
+/* 📤 SEND WITH RETRY */
+async function sendWithRetry(transporter, mail) {
+  for (let i = 0; i <= MAX_RETRIES; i++) {
+    try {
+      await transporter.sendMail(mail);
+      return true;
+    } catch (err) {
+      const msg = err?.message || "";
+      // retry only for transient issues
+      const transient =
+        msg.includes("ECONNECTION") ||
+        msg.includes("ETIMEDOUT") ||
+        msg.includes("EAI_AGAIN") ||
+        msg.includes("Rate limit") ||
+        msg.includes("Try again");
+
+      console.log(`Send fail (try ${i+1}):`, msg);
+
+      if (!transient || i === MAX_RETRIES) return false;
+      await sleep(1500 + i * 1000); // backoff
+    }
+  }
+}
+
+/* 📦 PARALLEL BATCH */
 async function sendBatch(transporter, batch) {
-  const results = await Promise.allSettled(
-    batch.map(m => transporter.sendMail(m))
+  const results = await Promise.all(
+    batch.map(m => sendWithRetry(transporter, m))
   );
-
-  let ok = 0;
-  results.forEach(r => {
-    if (r.status === "fulfilled") ok++;
-    else console.log("Fail:", r.reason?.message);
-  });
-
-  return ok;
+  return results.filter(Boolean).length;
 }
 
 /* 📤 SEND API */
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, gmail, apppass, to, subject, message, safeMode } = req.body;
+    const {
+      senderName, gmail, apppass, to,
+      subject, message, safeMode = false
+    } = req.body || {};
 
     if (!gmail || !apppass || !to || !message) {
       return res.json({ success: false, msg: "Missing fields" });
     }
-
     if (!emailRegex.test(gmail)) {
       return res.json({ success: false, msg: "Invalid Gmail" });
     }
 
-    if (!stats[gmail]) stats[gmail] = 0;
-
-    if (stats[gmail] >= HOURLY_LIMIT) {
-      return res.json({ success: false, msg: "Limit reached" });
+    if (!usage[gmail]) usage[gmail] = 0;
+    if (usage[gmail] >= HOURLY_LIMIT) {
+      return res.json({ success: false, msg: "Hourly limit reached" });
     }
 
-    const recipients = to
-      .split(/,|\n/)
-      .map(r => r.trim())
-      .filter(r => emailRegex.test(r));
+    const recipients = uniqueValid(
+      to.split(/,|\n/)
+    );
 
     if (!recipients.length) {
-      return res.json({ success: false, msg: "No valid emails" });
+      return res.json({ success: false, msg: "No valid recipients" });
     }
 
+    /* 📡 TRANSPORT */
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: gmail,
-        pass: apppass
-      }
+      auth: { user: gmail, pass: apppass }
     });
 
     try {
       await transporter.verify();
-    } catch (err) {
-      console.log("Verify error:", err.message);
+    } catch (e) {
+      console.log("Verify error:", e.message);
       return res.json({ success: false, msg: "Gmail login failed" });
     }
 
     const safeName = clean(senderName || gmail, 60);
-
-    /* 🔥 APPLY SANITIZER ONLY IF safeMode = true */
     const finalMessage = safeMode ? sanitize(message) : message;
 
     const mails = recipients.map(r => ({
@@ -144,16 +163,15 @@ app.post("/send", async (req, res) => {
     let sent = 0;
 
     for (let i = 0; i < mails.length; i += PARALLEL) {
-      if (stats[gmail] >= HOURLY_LIMIT) break;
+      if (usage[gmail] >= HOURLY_LIMIT) break;
 
       const batch = mails.slice(i, i + PARALLEL);
-
       const ok = await sendBatch(transporter, batch);
 
       sent += ok;
-      stats[gmail] += ok;
+      usage[gmail] += ok;
 
-      await sleep(DELAY);
+      await sleep(randDelay()); // natural gap
     }
 
     return res.json({ success: true, sent });
@@ -166,5 +184,5 @@ app.post("/send", async (req, res) => {
 
 /* 🚀 START */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("✅ Mail server running");
+  console.log("✅ Low-risk mail server running");
 });
