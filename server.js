@@ -31,10 +31,10 @@ app.post("/login", (req, res) => {
   res.json({ success: false });
 });
 
-/* ⚖️ SETTINGS (AS YOU SAID) */
+/* ⚖️ SETTINGS */
 const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
-const DELAY = 130; // 🔥 120ms bahut fast hai → 130 recommended
+const DELAY = 150; // 
 
 let stats = {};
 setInterval(() => { stats = {}; }, 60 * 60 * 1000);
@@ -50,7 +50,27 @@ const clean = (t = "", max = 3000) =>
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* 📤 PARALLEL SENDER */
+/* 🔤 OPTIONAL SANITIZER (simple tone softening, not bypass) */
+const WORD_MAP = {
+  "urgent": "quick",
+  "free": "no-cost",
+  "guarantee": "help",
+  "offer": "info",
+  "price": "details",
+  "click here": "see more",
+  "limited": "few",
+};
+
+function sanitize(text) {
+  let out = text;
+  for (const [bad, good] of Object.entries(WORD_MAP)) {
+    const re = new RegExp(`\\b${bad}\\b`, "gi");
+    out = out.replace(re, good);
+  }
+  return out;
+}
+
+/* 📤 PARALLEL SEND */
 async function sendBatch(transporter, batch) {
   const results = await Promise.allSettled(
     batch.map(m => transporter.sendMail(m))
@@ -65,10 +85,10 @@ async function sendBatch(transporter, batch) {
   return ok;
 }
 
-/* 📤 SEND */
+/* 📤 SEND API */
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, gmail, apppass, to, subject, message } = req.body;
+    const { senderName, gmail, apppass, to, subject, message, safeMode } = req.body;
 
     if (!gmail || !apppass || !to || !message) {
       return res.json({ success: false, msg: "Missing fields" });
@@ -93,7 +113,6 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "No valid emails" });
     }
 
-    /* 📡 TRANSPORT */
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -111,12 +130,14 @@ app.post("/send", async (req, res) => {
 
     const safeName = clean(senderName || gmail, 60);
 
-    /* 📦 MAIL LIST */
+    /* 🔥 APPLY SANITIZER ONLY IF safeMode = true */
+    const finalMessage = safeMode ? sanitize(message) : message;
+
     const mails = recipients.map(r => ({
       from: `"${safeName}" <${gmail}>`,
       to: r,
       subject: clean(subject || "Hello", 120),
-      text: clean(message),
+      text: clean(finalMessage),
       replyTo: gmail
     }));
 
