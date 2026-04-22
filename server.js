@@ -7,20 +7,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-
-// ================= CONFIG =================
 const PORT = process.env.PORT || 3000;
 
-// SAFE LIMITS (tune carefully)
+// ===== LIMIT SETTINGS (SAFE) =====
 const HOURLY_LIMIT = 27;
-const PARALLEL = 2;
-const DELAY = 120; // ms between sends
+const DELAY = 120;
 
-// ================= MIDDLEWARE =================
+// ===== MIDDLEWARE =====
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// ================= LOGIN =================
+// ===== LOGIN (FIXED) =====
 const USER = "@#@#";
 const PASS = "@#@#";
 
@@ -34,7 +31,19 @@ app.post("/login", (req, res) => {
   res.json({ success: false, msg: "Wrong login ❌" });
 });
 
-// ================= EMAIL SEND =================
+// ===== IMPORTANT ROUTES FIX =====
+
+// default page
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/login.html"));
+});
+
+// 🔥 FIX: launcher route
+app.get("/launcher", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/launcher.html"));
+});
+
+// ===== EMAIL SEND =====
 app.post("/send", async (req, res) => {
   try {
     const { senderName, gmail, apppass, subject, message, to } = req.body;
@@ -43,7 +52,6 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Missing fields ❌" });
     }
 
-    // transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -52,30 +60,22 @@ app.post("/send", async (req, res) => {
       }
     });
 
-    // recipients split
     let recipients = to
       .split(/[\n,]+/)
       .map(e => e.trim())
       .filter(Boolean);
 
-    // limit
     recipients = recipients.slice(0, HOURLY_LIMIT);
 
     let sent = 0;
 
-    for (let i = 0; i < recipients.length; i++) {
-      const email = recipients[i];
-
+    for (let email of recipients) {
       try {
         await transporter.sendMail({
           from: `"${senderName || gmail}" <${gmail}>`,
           to: email,
           subject: subject || "Hello",
-          text: message || "Hi",
-          headers: {
-            "X-Mailer": "NodeMailer",
-            "X-Priority": "3"
-          }
+          text: message || "Hi"
         });
 
         sent++;
@@ -83,7 +83,6 @@ app.post("/send", async (req, res) => {
         console.log("Fail:", email);
       }
 
-      // delay to reduce blocking
       await new Promise(r => setTimeout(r, DELAY));
     }
 
@@ -95,12 +94,7 @@ app.post("/send", async (req, res) => {
   }
 });
 
-// ================= ROUTES =================
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public/login.html"));
-});
-
-// ================= START =================
+// ===== START =====
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
