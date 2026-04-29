@@ -11,8 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 /* ===== SAFE LIMITS ===== */
 const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
-
+const BATCH_DELAY = 300;   // 1.5 sec (safe)
 const DAILY_LIMIT = 500;
 
 /* ===== MIDDLEWARE ===== */
@@ -76,42 +75,54 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Gmail login failed" });
     }
 
-    const recipients = to
+    /* CLEAN RECIPIENTS */
+    let recipients = to
       .split(/[\n,]+/)
       .map(e => e.trim())
       .filter(e => emailRegex.test(e))
-      .slice(0, HOURLY_LIMIT);
+      .slice(0, DAILY_LIMIT);
+
+    if (!recipients.length) {
+      return res.json({ success: false, msg: "No valid emails" });
+    }
 
     let sent = 0;
 
-    for (const email of recipients) {
-      try {
-        await transporter.sendMail({
-          from: `"${clean(senderName || gmail, 60)}" <${gmail}>`,
-          to: email,
-          subject: clean(subject || "Hello", 120),
-          text: clean(message),
+    /* ===== BATCH SENDING ===== */
+    for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
 
-          // 👇 important for trust
-          replyTo: gmail,
-          headers: {
-            "X-Mailer": "NodeMailer"
+      const batch = recipients.slice(i, i + BATCH_SIZE);
+
+      await Promise.all(
+        batch.map(async (email) => {
+          try {
+            await transporter.sendMail({
+              from: `"${clean(senderName || gmail, 60)}" <${gmail}>`,
+              to: email,
+              subject: clean(subject || "Hello", 120),
+              text: clean(message),
+              replyTo: gmail,
+              headers: {
+                "X-Mailer": "NodeMailer"
+              }
+            });
+
+            sent++;
+
+          } catch (err) {
+            console.log("Fail:", email);
           }
-        });
+        })
+      );
 
-        sent++;
-
-      } catch (err) {
-        console.log("Fail:", email);
-      }
-
-      await sleep(DELAY);
+      /* delay between batches */
+      await sleep(BATCH_DELAY);
     }
 
     return res.json({ success: true, sent });
 
   } catch (err) {
-    console.log(err.message);
+    console.log("SERVER ERROR:", err.message);
     return res.json({ success: false, msg: "Server error" });
   }
 });
