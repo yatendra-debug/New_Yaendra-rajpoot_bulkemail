@@ -1,6 +1,7 @@
 {
-  "name": "fast-mailer",
+  "name": "clean-mailer",
   "version": "1.0.0",
+  "description": "Safe bulk mail sender",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
