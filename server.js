@@ -11,8 +11,8 @@ const PORT = process.env.PORT || 3000;
 
 /* ===== SAFE SPEED SETTINGS ===== */
 const HOURLY_LIMIT = 27;     // same as tu chahta hai
-const DELAY = 1200;         // safe delay (120ms risky tha)
-const JITTER = 500;         // random delay (human behavior)
+const DELAY = 120;         // safe delay (120ms risky tha)
+const JITTER = 300;         // random delay (human behavior)
 
 /* ===== MIDDLEWARE ===== */
 app.use(express.json({ limit: "40kb" }));
