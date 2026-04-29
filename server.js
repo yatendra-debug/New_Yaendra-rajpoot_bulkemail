@@ -9,13 +9,12 @@ const crypto = require("crypto");
 const app = express();
 const PORT = 8080;
 
-/* ================= CONFIG ================= */
+/* ================= LOGIN ================= */
 
-const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
+const LOGIN_KEY = "@#@#";
 
-const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
+/* ================= SAFE LIMIT SETTINGS ================= */
 
-/* SAFE LIMIT */
 const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
 const DELAY_MS = 200;
@@ -28,17 +27,11 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
-    secret: SESSION_SECRET,
+    secret: crypto.randomBytes(32).toString("hex"),
     resave: false,
     saveUninitialized: false
   })
 );
-
-/* ================= HELPERS ================= */
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* ================= AUTH ================= */
 
@@ -54,7 +47,7 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  res.json({ success: false });
+  return res.json({ success: false, msg: "Wrong login" });
 });
 
 app.get("/launcher", (req, res) => {
@@ -62,83 +55,88 @@ app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
+/* ================= HELPERS ================= */
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /* ================= SEND MAIL ================= */
 
 app.post("/send", async (req, res) => {
   try {
-    const { senderName, email, password, recipients, subject, message } =
-      req.body;
+    const { senderName, gmail, apppass, subject, message, to } = req.body;
 
-    if (!email || !password || !recipients) {
-      return res.json({ success: false, msg: "Missing fields" });
+    if (!gmail || !apppass || !to) {
+      return res.json({ success: false, msg: "Missing fields ❌" });
     }
 
-    if (!emailRegex.test(email)) {
-      return res.json({ success: false, msg: "Invalid email" });
+    if (!emailRegex.test(gmail)) {
+      return res.json({ success: false, msg: "Invalid Gmail ❌" });
     }
 
-    const list = recipients
-      .split(/[\n,]+/)
-      .map(e => e.trim())
-      .filter(e => emailRegex.test(e))
-      .slice(0, DAILY_LIMIT);
-
-    if (!list.length) {
-      return res.json({ success: false, msg: "No valid emails" });
-    }
-
-    /* 🔥 FIXED TRANSPORTER */
+    /* 🔥 transporter FIX */
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
       auth: {
-        user: email,
-        pass: password
+        user: gmail,
+        pass: apppass
       }
     });
 
-    /* 🔥 VERIFY (IMPORTANT) */
     try {
       await transporter.verify();
-    } catch (err) {
+    } catch {
       return res.json({
         success: false,
         msg: "Gmail login failed (use App Password)"
       });
     }
 
+    let list = to
+      .split(/[\n,]+/)
+      .map(e => e.trim())
+      .filter(e => emailRegex.test(e));
+
+    list = list.slice(0, HOURLY_LIMIT);
+
     let sent = 0;
 
-    for (let to of list) {
-      try {
-        await transporter.sendMail({
-          from: `"${senderName || email}" <${email}>`,
-          to,
-          subject: subject || "Hello",
-          text: message || "Hi"
-        });
+    /* 🔥 PARALLEL SEND */
+    for (let i = 0; i < list.length; i += PARALLEL) {
+      const batch = list.slice(i, i + PARALLEL);
 
-        sent++;
-        console.log("Sent:", to);
+      const results = await Promise.allSettled(
+        batch.map(email =>
+          transporter.sendMail({
+            from: `"${senderName || gmail}" <${gmail}>`,
+            to: email,
+            subject: subject || "Hello",
+            text: message || "Hi"
+          })
+        )
+      );
 
-      } catch (err) {
-        console.log("Fail:", to);
-      }
+      results.forEach(r => {
+        if (r.status === "fulfilled") sent++;
+      });
 
-      await sleep(DELAY);
+      await sleep(DELAY_MS);
     }
 
+    /* 🔥 IMPORTANT FIX */
     return res.json({
       success: true,
-      sent
+      sent: sent
     });
 
   } catch (err) {
     console.log(err);
     return res.json({
       success: false,
-      msg: "Sending failed"
+      msg: "Sending failed ❌"
     });
   }
 });
