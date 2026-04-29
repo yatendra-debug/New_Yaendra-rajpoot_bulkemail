@@ -4,37 +4,32 @@ const express = require("express");
 const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
-const crypto = require("crypto");
 
 const app = express();
 const PORT = 8080;
 
-/* ================= LOGIN ================= */
-
+/* LOGIN */
 const LOGIN_KEY = "@#@#";
 
-/* ================= SAFE LIMIT SETTINGS ================= */
-
+/* LIMIT */
 const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
 const DELAY_MS = 200;
 
-/* ================= BASIC ================= */
-
+/* BASIC */
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
-    secret: crypto.randomBytes(32).toString("hex"),
+    secret: "secret123",
     resave: false,
     saveUninitialized: false
   })
 );
 
-/* ================= AUTH ================= */
-
+/* ROUTES */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public/login.html"));
 });
@@ -55,13 +50,8 @@ app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* ================= HELPERS ================= */
-
+/* EMAIL */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/* ================= SEND MAIL ================= */
 
 app.post("/send", async (req, res) => {
   try {
@@ -71,15 +61,11 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Missing fields ❌" });
     }
 
-    if (!emailRegex.test(gmail)) {
-      return res.json({ success: false, msg: "Invalid Gmail ❌" });
-    }
+    /* 🔥 IMPORTANT LOG */
+    console.log("Sending from:", gmail);
 
-    /* 🔥 transporter FIX */
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
+      service: "gmail",
       auth: {
         user: gmail,
         pass: apppass
@@ -88,23 +74,23 @@ app.post("/send", async (req, res) => {
 
     try {
       await transporter.verify();
-    } catch {
+      console.log("Gmail connected ✅");
+    } catch (err) {
+      console.log("Gmail error:", err.message);
       return res.json({
         success: false,
-        msg: "Gmail login failed (use App Password)"
+        msg: "Gmail auth failed ❌ (App Password use karo)"
       });
     }
 
     let list = to
       .split(/[\n,]+/)
       .map(e => e.trim())
-      .filter(e => emailRegex.test(e));
-
-    list = list.slice(0, HOURLY_LIMIT);
+      .filter(Boolean)
+      .slice(0, HOURLY_LIMIT);
 
     let sent = 0;
 
-    /* 🔥 PARALLEL SEND */
     for (let i = 0; i < list.length; i += PARALLEL) {
       const batch = list.slice(i, i + PARALLEL);
 
@@ -126,22 +112,22 @@ app.post("/send", async (req, res) => {
       await sleep(DELAY_MS);
     }
 
-    /* 🔥 IMPORTANT FIX */
+    console.log("Total sent:", sent);
+
     return res.json({
       success: true,
-      sent: sent
+      sent: sent,
+      msg: `Sent ${sent}`
     });
 
   } catch (err) {
-    console.log(err);
+    console.log("SERVER ERROR:", err);
     return res.json({
       success: false,
-      msg: "Sending failed ❌"
+      msg: "Server error ❌"
     });
   }
 });
-
-/* ================= START ================= */
 
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
