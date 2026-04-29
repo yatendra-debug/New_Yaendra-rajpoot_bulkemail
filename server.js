@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 /* ===== SAFE SPEED SETTINGS ===== */
 const HOURLY_LIMIT = 27;     // same as tu chahta hai
-const DELAY = 120;         // safe delay (120ms risky tha)
+const DELAY = 120;         // safe delay (110ms risky tha)
 const JITTER = 300;         // random delay (human behavior)
 
 /* ===== MIDDLEWARE ===== */
