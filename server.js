@@ -9,12 +9,13 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* ===== SAFE LIMIT SETTINGS ===== */
-const HOURLY_LIMIT = 25;     // safe range
-const DELAY = 1500;         // 1.5 sec delay (important)
+/* ===== SAFE SPEED SETTINGS ===== */
+const HOURLY_LIMIT = 27;     // same as tu chahta hai
+const DELAY = 1200;         // safe delay (120ms risky tha)
+const JITTER = 500;         // random delay (human behavior)
 
 /* ===== MIDDLEWARE ===== */
-app.use(express.json({ limit: "50kb" }));
+app.use(express.json({ limit: "40kb" }));
 app.use(express.static(path.join(__dirname, "public")));
 app.disable("x-powered-by");
 
@@ -29,7 +30,7 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  res.json({ success: false, msg: "Wrong login ❌" });
+  return res.json({ success: false });
 });
 
 /* ===== ROUTES ===== */
@@ -41,8 +42,17 @@ app.get("/launcher", (req, res) => {
   res.sendFile(path.join(__dirname, "public/launcher.html"));
 });
 
-/* ===== EMAIL VALIDATION ===== */
+/* ===== HELPERS ===== */
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const clean = (t = "", max = 3000) =>
+  t.replace(/\r\n/g, "\n")
+   .replace(/\n{3,}/g, "\n\n")
+   .trim()
+   .slice(0, max);
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const delay = () => DELAY + Math.floor(Math.random() * JITTER);
 
 /* ===== SEND EMAIL ===== */
 app.post("/send", async (req, res) => {
@@ -57,28 +67,24 @@ app.post("/send", async (req, res) => {
       return res.json({ success: false, msg: "Invalid Gmail ❌" });
     }
 
-    /* ===== TRANSPORTER ===== */
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: gmail,
-        pass: apppass
-      }
+      auth: { user: gmail, pass: apppass }
     });
 
     try {
       await transporter.verify();
     } catch {
-      return res.json({ success: false, msg: "Login failed ❌" });
+      return res.json({ success: false, msg: "Gmail login failed ❌" });
     }
 
-    /* ===== RECIPIENTS CLEAN ===== */
+    /* CLEAN RECIPIENTS */
     let recipients = to
       .split(/[\n,]+/)
       .map(e => e.trim())
       .filter(e => emailRegex.test(e));
 
-    if (recipients.length === 0) {
+    if (!recipients.length) {
       return res.json({ success: false, msg: "No valid emails ❌" });
     }
 
@@ -86,14 +92,13 @@ app.post("/send", async (req, res) => {
 
     let sent = 0;
 
-    /* ===== SAFE LOOP ===== */
-    for (let email of recipients) {
+    for (const email of recipients) {
       try {
         await transporter.sendMail({
-          from: `"${senderName || gmail}" <${gmail}>`,
+          from: `"${clean(senderName || gmail, 60)}" <${gmail}>`,
           to: email,
-          subject: (subject || "Hello").slice(0, 100),
-          text: (message || "Hi").slice(0, 3000),
+          subject: clean(subject || "Hello", 120),
+          text: clean(message),
           replyTo: gmail,
           headers: {
             "X-Mailer": "NodeMailer",
@@ -107,18 +112,18 @@ app.post("/send", async (req, res) => {
         console.log("Fail:", email);
       }
 
-      await new Promise(r => setTimeout(r, DELAY));
+      await sleep(delay()); // 🔥 human-like delay
     }
 
     return res.json({ success: true, sent });
 
   } catch (err) {
-    console.log(err);
+    console.log("SERVER ERROR:", err.message);
     return res.json({ success: false, msg: "Server error ❌" });
   }
 });
 
 /* ===== START ===== */
 app.listen(PORT, () => {
-  console.log("✅ Server running on port", PORT);
+  console.log("✅ Safe Mail Server Running");
 });
