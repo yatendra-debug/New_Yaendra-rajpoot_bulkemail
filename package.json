@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "nodemailer": "^6.9.13",
-    "dotenv": "^16.4.5"
+    "nodemailer": "^6.9.13"
   }
 }
