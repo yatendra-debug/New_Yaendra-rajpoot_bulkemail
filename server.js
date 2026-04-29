@@ -7,7 +7,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
@@ -16,10 +16,11 @@ const LOGIN_KEY = "@#@#";
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 
+/* 🔥 SAFE SENDING SETTINGS */
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
-
 const DAILY_LIMIT = 400;
+
 
 /* ================= BASIC ================= */
 
@@ -43,7 +44,7 @@ app.use(
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
+/* ================= SECURITY ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
@@ -66,7 +67,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (rec.count > 100) {
+  if (rec.count > 80) {
     return res.status(429).send("Too many requests");
   }
 
@@ -77,6 +78,7 @@ app.use((req, res, next) => {
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+const randDelay = () => BASE_DELAY + Math.floor(Math.random() * JITTER);
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -84,10 +86,10 @@ function cleanHeader(str = "", max = 120) {
   return str.replace(/[\r\n]/g, "").trim().slice(0, max);
 }
 
-function preserveText(str = "", max = 20000) {
+function cleanText(str = "", max = 20000) {
   return str
     .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .slice(0, max);
 }
 
@@ -174,17 +176,14 @@ app.post("/send", requireAuth, async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: {
-        user: email,
-        pass: password
-      }
+      auth: { user: email, pass: password }
     });
 
     await transporter.verify();
 
     const finalName = cleanHeader(senderName || email);
-    const finalSubject = cleanHeader(subject || "Message");
-    const finalText = preserveText(message || "");
+    const finalSubject = cleanHeader(subject || "Hello");
+    const finalText = cleanText(message || "");
 
     let sent = 0;
 
@@ -197,7 +196,11 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${finalName}" <${email}>`,
             to,
             subject: finalSubject,
-            text: finalText
+            text: finalText,
+            replyTo: email,
+            headers: {
+              "X-Mailer": "NodeMailer"
+            }
           })
         )
       );
@@ -206,15 +209,16 @@ app.post("/send", requireAuth, async (req, res) => {
         if (r.status === "fulfilled") sent++;
       });
 
-      await delay(BATCH_DELAY);
+      await delay(randDelay()); // 🔥 human-like delay
     }
 
     return res.json({
       success: true,
-      message: `Send ${sent}`
+      message: `Sent ${sent}`
     });
 
   } catch (err) {
+    console.log("ERROR:", err.message);
     return res.json({
       success: false,
       message: "Sending failed"
@@ -225,5 +229,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("✅ Server running on port " + PORT);
 });
