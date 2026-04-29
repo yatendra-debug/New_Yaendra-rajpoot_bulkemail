@@ -11,7 +11,7 @@ const PORT = 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
+const LOGIN_KEY = "@#@#";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 const SESSION_TIME = 60 * 60 * 1000; // 1 hour
@@ -19,7 +19,7 @@ const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 const BATCH_SIZE = 5;
 const BATCH_DELAY = 300;
 
-const DAILY_LIMIT = 500;
+const DAILY_LIMIT = 400;
 
 /* ================= BASIC ================= */
 
