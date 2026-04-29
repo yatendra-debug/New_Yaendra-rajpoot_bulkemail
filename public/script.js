@@ -1,62 +1,49 @@
-document.addEventListener("DOMContentLoaded", () => {
+function logout() {
+  fetch('/logout', { method: 'POST' })
+    .then(() => window.location.href = '/');
+}
 
-  if (!sessionStorage.getItem("auth")) {
-    location.href = "/login.html";
+document.getElementById('sendBtn')?.addEventListener('click', () => {
+  const senderName = document.getElementById('senderName').value;
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('pass').value.trim();
+  const subject = document.getElementById('subject').value;
+  const message = document.getElementById('message').value;
+  const recipients = document.getElementById('recipients').value.trim();
+  const status = document.getElementById('statusMessage');
+
+  if (!email || !password || !recipients) {
+    status.innerText = '❌ Email, password and recipients required';
+    alert('❌ Email, password and recipients required');
     return;
   }
 
-  let sending = false;
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.innerText = '⏳ Sending...';
 
-  const sendBtn = document.getElementById("sendBtn");
-  const logoutBtn = document.getElementById("logoutBtn");
+  fetch('/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ senderName, email, password, subject, message, recipients })
+  })
+    .then(r => r.json())
+    .then(data => {
+      status.innerText = data.message;
 
-  sendBtn.addEventListener("click", () => {
-    if (!sending) sendMail();
-  });
-
-  logoutBtn.addEventListener("dblclick", async () => {
-    if (!sending) {
-      await fetch("/logout", { method: "POST" });
-      sessionStorage.clear();
-      location.href = "/login.html";
-    }
-  });
-
-  async function sendMail() {
-    sending = true;
-    sendBtn.disabled = true;
-    sendBtn.innerText = "Sending...";
-
-    try {
-      const res = await fetch("/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          senderName: document.getElementById("senderName").value.trim(),
-          email: document.getElementById("gmail").value.trim(),
-          password: document.getElementById("apppass").value.trim(),
-          subject: document.getElementById("subject").value.trim(),
-          message: document.getElementById("message").value.trim(),
-          recipients: document.getElementById("to").value.trim()
-        })
-      });
-
-      const data = await res.json();
-
-      // 🔥 FIX: undefined issue
       if (data.success) {
-        alert(`✅ Sent: ${data.sent || 0} emails`);
+        alert('✅ Mail sent successfully!');
       } else {
-        alert(data.msg || data.message || "Sending failed ❌");
+        alert('❌ Failed: ' + data.message);
       }
 
-    } catch (err) {
-      alert("Server error ❌");
-    } finally {
-      sending = false;
-      sendBtn.disabled = false;
-      sendBtn.innerText = "Send All";
-    }
-  }
-
+      btn.disabled = false;
+      btn.innerText = 'Send All';
+    })
+    .catch(err => {
+      status.innerText = '❌ Error: ' + err.message;
+      alert('❌ Error: ' + err.message);
+      btn.disabled = false;
+      btn.innerText = 'Send All';
+    });
 });
