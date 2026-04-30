@@ -4,58 +4,48 @@ const express = require("express");
 const session = require("express-session");
 const nodemailer = require("nodemailer");
 const path = require("path");
-const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
-const LOGIN_KEY = "#@";
+const LOGIN_KEY = "@#@#";
 
-const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
-
-/* ⚖️ SAFE LIMITS */
+/* ⚖️ SAFE LIMIT */
 const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
-const DELAY_MS = 250;
+const DELAY_MS = 200;
 
-/* ================= BASIC ================= */
+/* ================= MIDDLEWARE ================= */
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   session({
-    secret: SESSION_SECRET,
+    secret: "secret123",
     resave: false,
     saveUninitialized: false
   })
 );
 
-/* ================= CLEAN FILTER ================= */
-
-const spamWords = [
-  "webpage","error","report","rank","screenshot",
-  "price","quote","information","hello","hi","website"
-];
-
-function cleanMessage(text = "") {
-  let t = text.toLowerCase();
-
-  spamWords.forEach(word => {
-    const reg = new RegExp(word, "gi");
-    t = t.replace(reg, "");
-  });
-
-  return t
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 1000);
-}
-
 /* ================= AUTH ================= */
 
+function auth(req, res, next) {
+  if (req.session.user === LOGIN_KEY) return next();
+  return res.redirect("/");
+}
+
+/* ================= ROUTES ================= */
+
+// 🔥 LOGIN PAGE
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public/login.html"));
+});
+
+// 🔥 LOGIN API
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
@@ -64,15 +54,26 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  res.json({ success: false });
+  return res.json({ success: false });
 });
 
-function auth(req, res, next) {
-  if (req.session.user === LOGIN_KEY) return next();
-  res.redirect("/");
-}
+// 🔥 IMPORTANT FIX (LAUNCHER ROUTE)
+app.get("/launcher", (req, res) => {
+  if (req.session.user !== LOGIN_KEY) {
+    return res.redirect("/");
+  }
 
-/* ================= SEND ================= */
+  res.sendFile(path.join(__dirname, "public/launcher.html"));
+});
+
+// 🔥 LOGOUT
+app.post("/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.json({ success: true });
+  });
+});
+
+/* ================= SEND MAIL ================= */
 
 app.post("/send", auth, async (req, res) => {
   try {
@@ -80,7 +81,7 @@ app.post("/send", auth, async (req, res) => {
       req.body;
 
     if (!email || !password || !recipients) {
-      return res.json({ success: false, msg: "Missing fields" });
+      return res.json({ success: false, message: "Missing fields" });
     }
 
     const list = recipients
@@ -91,7 +92,10 @@ app.post("/send", auth, async (req, res) => {
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user: email, pass: password }
+      auth: {
+        user: email,
+        pass: password
+      }
     });
 
     try {
@@ -99,7 +103,7 @@ app.post("/send", auth, async (req, res) => {
     } catch {
       return res.json({
         success: false,
-        msg: "Gmail login failed (App Password use karo)"
+        message: "Gmail login failed (App Password use karo)"
       });
     }
 
@@ -113,9 +117,8 @@ app.post("/send", auth, async (req, res) => {
           transporter.sendMail({
             from: `"${senderName || email}" <${email}>`,
             to,
-            subject: cleanMessage(subject || "Hello"),
-            text: cleanMessage(message),
-
+            subject: subject || "Hello",
+            text: message || "Hi",
             replyTo: email
           })
         )
@@ -128,16 +131,17 @@ app.post("/send", auth, async (req, res) => {
       await new Promise(r => setTimeout(r, DELAY_MS));
     }
 
+    // 🔥 COUNT FIX (NO MORE undefined)
     return res.json({
       success: true,
-      message: sent,   // 🔥 COUNT FIX
-      sent
+      message: sent,
+      sent: sent
     });
 
   } catch (err) {
     return res.json({
       success: false,
-      msg: "Server error"
+      message: "Sending failed"
     });
   }
 });
@@ -145,5 +149,5 @@ app.post("/send", auth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("Server running on port " + PORT);
 });
