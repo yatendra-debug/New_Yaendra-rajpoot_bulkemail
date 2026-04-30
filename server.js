@@ -14,9 +14,9 @@ const PORT = process.env.PORT || 8080;
 const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000;
+const SESSION_TIME = 60 * 60 * 1000; // 1 hour
 
-/* ⚖️ SAFE LIMIT */
+/* ⚖️ SAFE LIMITS */
 const HOURLY_LIMIT = 27;
 const PARALLEL = 2;
 const DELAY_MS = 250;
@@ -25,7 +25,7 @@ const DELAY_MS = 250;
 
 app.disable("x-powered-by");
 
-app.use(express.json());
+app.use(express.json({ limit: "20kb" }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -43,9 +43,19 @@ app.use(
   })
 );
 
+/* ================= SECURITY ================= */
+
+app.use((req, res, next) => {
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
+
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 1000) =>
@@ -70,7 +80,7 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  return res.json({ success: false });
+  return res.json({ success: false, msg: "Wrong login ❌" });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -99,6 +109,7 @@ app.post("/send", requireAuth, async (req, res) => {
       return res.json({ success: false, msg: "Invalid email ❌" });
     }
 
+    // clean + limit
     const list = [
       ...new Set(
         recipients
@@ -120,12 +131,13 @@ app.post("/send", requireAuth, async (req, res) => {
       }
     });
 
+    // 🔥 verify gmail
     try {
       await transporter.verify();
     } catch {
       return res.json({
         success: false,
-        msg: "Gmail login failed ❌"
+        msg: "Gmail login failed ❌ (App Password use karo)"
       });
     }
 
@@ -140,8 +152,13 @@ app.post("/send", requireAuth, async (req, res) => {
             from: `"${clean(senderName || email, 60)}" <${email}>`,
             to,
             subject: clean(subject || "Hello", 120),
-            text: clean(message),
-            replyTo: email
+            text: clean(message || "Hi"),
+
+            // basic trust signals
+            replyTo: email,
+            headers: {
+              "X-Mailer": "NodeMailer"
+            }
           })
         )
       );
@@ -153,13 +170,13 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(DELAY_MS);
     }
 
-    // 🔥 FINAL FIX: sent return karo
     return res.json({
       success: true,
-      sent: sent
+      sent
     });
 
   } catch (err) {
+    console.log("ERROR:", err.message);
     return res.json({
       success: false,
       msg: "Server error ❌"
@@ -167,6 +184,8 @@ app.post("/send", requireAuth, async (req, res) => {
   }
 });
 
+/* ================= START ================= */
+
 app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
+  console.log("✅ Server running on port", PORT);
 });
