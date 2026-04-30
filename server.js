@@ -25,7 +25,7 @@ const DELAY_MS = 250;
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "20kb" }));
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -43,19 +43,9 @@ app.use(
   })
 );
 
-/* ================= SECURITY ================= */
-
-app.use((req, res, next) => {
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
-
 /* ================= HELPERS ================= */
 
 const delay = ms => new Promise(r => setTimeout(r, ms));
-
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const clean = (t = "", max = 1000) =>
@@ -80,7 +70,7 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  return res.json({ success: false, msg: "Wrong login ❌" });
+  return res.json({ success: false });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -135,7 +125,7 @@ app.post("/send", requireAuth, async (req, res) => {
     } catch {
       return res.json({
         success: false,
-        msg: "Gmail login failed ❌ (App Password use karo)"
+        msg: "Gmail login failed ❌"
       });
     }
 
@@ -151,13 +141,7 @@ app.post("/send", requireAuth, async (req, res) => {
             to,
             subject: clean(subject || "Hello", 120),
             text: clean(message),
-
-            // 🔥 trust improve
-            replyTo: email,
-            headers: {
-              "X-Mailer": "NodeMailer",
-              "X-Priority": "3"
-            }
+            replyTo: email
           })
         )
       );
@@ -169,14 +153,13 @@ app.post("/send", requireAuth, async (req, res) => {
       await delay(DELAY_MS);
     }
 
+    // 🔥 FINAL FIX: sent return karo
     return res.json({
       success: true,
-      sent,
-      msg: `Sent ${sent}`
+      sent: sent
     });
 
   } catch (err) {
-    console.log(err.message);
     return res.json({
       success: false,
       msg: "Server error ❌"
@@ -184,8 +167,6 @@ app.post("/send", requireAuth, async (req, res) => {
   }
 });
 
-/* ================= START ================= */
-
 app.listen(PORT, () => {
-  console.log("✅ Server running on port", PORT);
+  console.log("Server running on port", PORT);
 });
