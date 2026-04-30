@@ -3,7 +3,8 @@ function logout() {
     .then(() => window.location.href = '/');
 }
 
-document.getElementById('sendBtn')?.addEventListener('click', () => {
+document.getElementById('sendBtn')?.addEventListener('click', async () => {
+
   const senderName = document.getElementById('senderName').value;
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('pass').value.trim();
@@ -22,28 +23,40 @@ document.getElementById('sendBtn')?.addEventListener('click', () => {
   btn.disabled = true;
   btn.innerText = '⏳ Sending...';
 
-  fetch('/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ senderName, email, password, subject, message, recipients })
-  })
-    .then(r => r.json())
-    .then(data => {
-      status.innerText = data.message;
-
-      if (data.success) {
-        alert('✅ Mail sent successfully!');
-      } else {
-        alert('❌ Failed: ' + data.message);
-      }
-
-      btn.disabled = false;
-      btn.innerText = 'Send All';
-    })
-    .catch(err => {
-      status.innerText = '❌ Error: ' + err.message;
-      alert('❌ Error: ' + err.message);
-      btn.disabled = false;
-      btn.innerText = 'Send All';
+  try {
+    const res = await fetch('/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        senderName,
+        email,
+        password,
+        subject,
+        message,
+        recipients
+      })
     });
+
+    const data = await res.json();
+
+    // 🔥 FINAL FIX (IMPORTANT)
+    if (data.success) {
+      const count = data.sent ?? 0;
+
+      status.innerText = `✅ Sent: ${count}`;
+      alert(`✅ Sent: ${count} emails`);
+
+    } else {
+      status.innerText = data.msg || data.message || '❌ Sending failed';
+      alert(status.innerText);
+    }
+
+  } catch (err) {
+    status.innerText = '❌ Server error';
+    alert('❌ Server error');
+  }
+
+  btn.disabled = false;
+  btn.innerText = 'Send All';
+
 });
