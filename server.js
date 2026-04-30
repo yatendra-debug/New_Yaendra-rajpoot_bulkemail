@@ -7,26 +7,26 @@ const path = require("path");
 const crypto = require("crypto");
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.PORT || 8080;
 
 /* ================= CONFIG ================= */
 
 const LOGIN_KEY = "^%%^&^&%$$#$$%#P#@";
 
 const SESSION_SECRET = crypto.randomBytes(32).toString("hex");
-const SESSION_TIME = 60 * 60 * 1000; // 1 hour
+const SESSION_TIME = 60 * 60 * 1000;
 
-const BATCH_SIZE = 5;
-const BATCH_DELAY = 300;
-
-const DAILY_LIMIT = 500;
+/* ⚖️ SAFE LIMIT */
+const HOURLY_LIMIT = 27;
+const PARALLEL = 2;
+const DELAY_MS = 250;
 
 /* ================= BASIC ================= */
 
 app.disable("x-powered-by");
 
-app.use(express.json({ limit: "25kb" }));
-app.use(express.urlencoded({ extended: false, limit: "25kb" }));
+app.use(express.json({ limit: "20kb" }));
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
@@ -43,34 +43,12 @@ app.use(
   })
 );
 
-/* ================= SECURITY HEADERS ================= */
+/* ================= SECURITY ================= */
 
 app.use((req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
-
-/* ================= RATE LIMIT ================= */
-
-const ipLimiter = new Map();
-
-app.use((req, res, next) => {
-  const ip = req.ip;
-  const now = Date.now();
-  const rec = ipLimiter.get(ip);
-
-  if (!rec || now - rec.start > 60000) {
-    ipLimiter.set(ip, { count: 1, start: now });
-    return next();
-  }
-
-  if (rec.count > 100) {
-    return res.status(429).send("Too many requests");
-  }
-
-  rec.count++;
   next();
 });
 
@@ -80,36 +58,8 @@ const delay = ms => new Promise(r => setTimeout(r, ms));
 
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function cleanHeader(str = "", max = 120) {
-  return str.replace(/[\r\n]/g, "").trim().slice(0, max);
-}
-
-function preserveText(str = "", max = 200000) {
-  return str
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .slice(0, max);
-}
-
-/* ================= DAILY LIMIT ================= */
-
-const dailyMap = new Map();
-
-function checkDailyLimit(sender, count) {
-  const now = Date.now();
-  const rec = dailyMap.get(sender);
-
-  if (!rec || now - rec.start > 8640000000) {
-    dailyMap.set(sender, { count: 0, start: now });
-  }
-
-  const updated = dailyMap.get(sender);
-
-  if (updated.count + count > DAILY_LIMIT) return false;
-
-  updated.count += count;
-  return true;
-}
+const clean = (t = "", max = 1000) =>
+  t.replace(/[\r\n]+/g, "\n").trim().slice(0, max);
 
 /* ================= AUTH ================= */
 
@@ -130,7 +80,7 @@ app.post("/login", (req, res) => {
     return res.json({ success: true });
   }
 
-  return res.json({ success: false });
+  return res.json({ success: false, msg: "Wrong login ❌" });
 });
 
 app.get("/launcher", requireAuth, (req, res) => {
@@ -151,26 +101,26 @@ app.post("/send", requireAuth, async (req, res) => {
     const { senderName, email, password, recipients, subject, message } =
       req.body || {};
 
-    if (!email || !password || !recipients)
-      return res.json({ success: false, message: "Missing fields" });
+    if (!email || !password || !recipients) {
+      return res.json({ success: false, msg: "Missing fields ❌" });
+    }
 
-    if (!emailRegex.test(email))
-      return res.json({ success: false, message: "Invalid email" });
+    if (!emailRegex.test(email)) {
+      return res.json({ success: false, msg: "Invalid email ❌" });
+    }
 
     const list = [
       ...new Set(
         recipients
           .split(/[\n,]+/)
-          .map(r => r.trim())
-          .filter(r => emailRegex.test(r))
+          .map(e => e.trim())
+          .filter(e => emailRegex.test(e))
       )
-    ];
+    ].slice(0, HOURLY_LIMIT);
 
-    if (!list.length)
-      return res.json({ success: false, message: "No recipients" });
-
-    if (!checkDailyLimit(email, list.length))
-      return res.json({ success: false, message: "Daily limit reached" });
+    if (!list.length) {
+      return res.json({ success: false, msg: "No valid recipients ❌" });
+    }
 
     const transporter = nodemailer.createTransport({
       service: "gmail",
@@ -180,24 +130,34 @@ app.post("/send", requireAuth, async (req, res) => {
       }
     });
 
-    await transporter.verify();
-
-    const finalName = cleanHeader(senderName || email);
-    const finalSubject = cleanHeader(subject || "Message");
-    const finalText = preserveText(message || "");
+    try {
+      await transporter.verify();
+    } catch {
+      return res.json({
+        success: false,
+        msg: "Gmail login failed ❌ (App Password use karo)"
+      });
+    }
 
     let sent = 0;
 
-    for (let i = 0; i < list.length; i += BATCH_SIZE) {
-      const batch = list.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < list.length; i += PARALLEL) {
+      const batch = list.slice(i, i + PARALLEL);
 
       const results = await Promise.allSettled(
         batch.map(to =>
           transporter.sendMail({
-            from: `"${finalName}" <${email}>`,
+            from: `"${clean(senderName || email, 60)}" <${email}>`,
             to,
-            subject: finalSubject,
-            text: finalText
+            subject: clean(subject || "Hello", 120),
+            text: clean(message),
+
+            // 🔥 trust improve
+            replyTo: email,
+            headers: {
+              "X-Mailer": "NodeMailer",
+              "X-Priority": "3"
+            }
           })
         )
       );
@@ -206,18 +166,20 @@ app.post("/send", requireAuth, async (req, res) => {
         if (r.status === "fulfilled") sent++;
       });
 
-      await delay(BATCH_DELAY);
+      await delay(DELAY_MS);
     }
 
     return res.json({
       success: true,
-      message: `Send ${sent}`
+      sent,
+      msg: `Sent ${sent}`
     });
 
   } catch (err) {
+    console.log(err.message);
     return res.json({
       success: false,
-      message: "Sending failed"
+      msg: "Server error ❌"
     });
   }
 });
@@ -225,5 +187,5 @@ app.post("/send", requireAuth, async (req, res) => {
 /* ================= START ================= */
 
 app.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+  console.log("✅ Server running on port", PORT);
 });
